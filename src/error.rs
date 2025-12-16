@@ -1,0 +1,192 @@
+#![deny(warnings)]
+#![allow(dead_code)] // Error types will be used as modules are implemented
+
+// Error types for the genmcp crate
+
+use thiserror::Error;
+
+/// Main error type for the genmcp application
+#[derive(Error, Debug)]
+pub enum GenMcpError {
+    /// Configuration parsing or validation errors
+    #[error("Configuration error: {0}")]
+    Config(#[from] ConfigError),
+
+    /// Command execution errors
+    #[error("Execution error: {0}")]
+    Execution(#[from] ExecutionError),
+
+    /// MCP protocol errors
+    #[error("MCP protocol error: {0}")]
+    Mcp(#[from] McpError),
+
+    /// Transport layer errors
+    #[error("Transport error: {0}")]
+    Transport(#[from] TransportError),
+
+    /// Tool registry errors
+    #[error("Tool registry error: {0}")]
+    ToolRegistry(#[from] ToolRegistryError),
+
+    /// IO errors
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+}
+
+/// Configuration-related errors
+#[derive(Error, Debug)]
+pub enum ConfigError {
+    /// TOML parsing error
+    #[error("Failed to parse TOML: {0}")]
+    ParseToml(#[from] toml::de::Error),
+
+    /// Missing required field
+    #[error("Missing required field: {0}")]
+    MissingField(String),
+
+    /// Invalid field value
+    #[error("Invalid value for field '{field}': {message}")]
+    InvalidValue { field: String, message: String },
+
+    /// File not found
+    #[error("Configuration file not found: {0}")]
+    FileNotFound(String),
+
+    /// Invalid timeout value
+    #[error("Invalid timeout value: {0} seconds (must be positive)")]
+    InvalidTimeout(u64),
+
+    /// Invalid MAX value (MAX must be >= default)
+    #[error("Invalid MAX value for '{field}': MAX ({max}) must be >= default ({default})")]
+    InvalidMax {
+        field: String,
+        default: u64,
+        max: u64,
+    },
+
+    /// Invalid signal name
+    #[error("Invalid termination signal: {0} (must be SIGTERM or SIGINT)")]
+    InvalidSignal(String),
+
+    /// Duplicate tool name
+    #[error("Duplicate tool name: {0}")]
+    DuplicateToolName(String),
+}
+
+/// Command execution errors
+#[derive(Error, Debug)]
+pub enum ExecutionError {
+    /// Command execution failed
+    #[error("Command execution failed: {command}")]
+    CommandFailed {
+        command: String,
+        exit_code: Option<i32>,
+        stderr: String,
+    },
+
+    /// Command timeout
+    #[error("Command timed out after {timeout} seconds: {command}")]
+    Timeout {
+        command: String,
+        timeout: u64,
+    },
+
+    /// Process was stopped after stop_after duration (this is success, not error)
+    /// Note: This should not be used as an error, but included for completeness
+    #[error("Process stopped after {duration} seconds: {command}")]
+    StoppedAfter {
+        command: String,
+        duration: u64,
+    },
+
+    /// Failed to send termination signal
+    #[error("Failed to send termination signal to process: {0}")]
+    SignalFailed(String),
+
+    /// Command not found
+    #[error("Command not found: {0}")]
+    CommandNotFound(String),
+
+    /// Permission denied
+    #[error("Permission denied executing command: {0}")]
+    PermissionDenied(String),
+
+    /// Invalid arguments
+    #[error("Invalid arguments for command: {0}")]
+    InvalidArguments(String),
+}
+
+/// MCP protocol errors
+#[derive(Error, Debug)]
+pub enum McpError {
+    /// Invalid protocol version
+    #[error("Unsupported protocol version: {0}")]
+    InvalidProtocolVersion(String),
+
+    /// Invalid JSON-RPC message
+    #[error("Invalid JSON-RPC message: {0}")]
+    InvalidJsonRpc(String),
+
+    /// Missing required capability
+    #[error("Missing required capability: {0}")]
+    MissingCapability(String),
+
+    /// Tool not found
+    #[error("Tool not found: {0}")]
+    ToolNotFound(String),
+
+    /// Invalid tool parameters
+    #[error("Invalid tool parameters: {0}")]
+    InvalidToolParameters(String),
+
+    /// Runtime override exceeds MAX value
+    #[error("Runtime override '{field}' ({value}) exceeds MAX value ({max})")]
+    OverrideExceedsMax {
+        field: String,
+        value: u64,
+        max: u64,
+    },
+}
+
+/// Transport layer errors
+#[derive(Error, Debug)]
+pub enum TransportError {
+    /// WebSocket connection error
+    #[error("WebSocket connection error: {0}")]
+    WebSocket(String),
+
+    /// Authentication failed
+    #[error("Authentication failed: {0}")]
+    Authentication(String),
+
+    /// Invalid message format
+    #[error("Invalid message format: {0}")]
+    InvalidMessage(String),
+
+    /// Connection closed
+    #[error("Connection closed")]
+    ConnectionClosed,
+
+    /// IO error in transport
+    #[error("Transport IO error: {0}")]
+    Io(#[from] std::io::Error),
+}
+
+/// Tool registry errors
+#[derive(Error, Debug)]
+pub enum ToolRegistryError {
+    /// Tool already registered
+    #[error("Tool already registered: {0}")]
+    DuplicateTool(String),
+
+    /// Tool not found in registry
+    #[error("Tool not found in registry: {0}")]
+    ToolNotFound(String),
+
+    /// Invalid tool configuration
+    #[error("Invalid tool configuration: {0}")]
+    InvalidConfig(String),
+}
+
+/// Result type alias for convenience
+pub type Result<T> = std::result::Result<T, GenMcpError>;

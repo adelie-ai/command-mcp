@@ -1,0 +1,30 @@
+[package]
+name = "genmcp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+axum = { version = "0.7", features = ["ws"] }
+axum-extra = "0.9"
+clap = { version = "4.5.53", features = ["derive"] }
+futures-util = "0.3.31"
+jsonwebtoken = "9.0"
+nix = { version = "0.27", features = ["process", "signal"] }
+rust-mcp-schema = "0.9.1"
+rust-mcp-sdk = "0.7.4"
+rust-mcp-transport = "0.6.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tempfile = "3.0"
+thiserror = "1.0"
+tokio = { version = "1.48.0", features = ["full"] }
+tokio-test = "0.4"
+toml = "0.9.8"
+tower-http = "0.5"
+
+[lints.rust]
+warnings = "deny"
+
+[lints.clippy]
+all = "deny"

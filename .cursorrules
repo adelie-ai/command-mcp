@@ -1,0 +1,270 @@
+# Generic MCP Script Adapter - Development Rules
+
+## Development Workflow
+
+### Work in Cohesive Chunks
+- Complete a logical unit of work before committing (e.g., implement a module, add tests, fix bugs)
+- Each chunk should be self-contained and functional
+- Avoid partial implementations that break the build
+- Group related changes together (implementation + tests + documentation)
+- Update documentation when making changes that affect user-facing behavior or configuration
+
+### After Each Change
+1. Run `cargo test` - Fix any failing tests (do not modify tests unless they are incorrect)
+2. Run `cargo build` - Must pass with no warnings (warnings are treated as errors)
+3. Run `cargo clippy -- -D warnings` - Must pass with no warnings (linter warnings are treated as errors)
+4. Resolve all errors and warnings before proceeding to next change
+5. Commit the cohesive chunk with a proper commit message
+
+### Git Commit Strategy
+- Commit after completing a cohesive chunk of work
+- Use conventional commit messages with clear, descriptive messages
+- Format: `<type>(<scope>): <subject>`
+  - Types: `feat`, `fix`, `test`, `docs`, `refactor`, `chore`
+  - Scope: module name or area (e.g., `config`, `executor`, `mcp-server`)
+  - Subject: concise description of what changed
+- Include body if needed for context or breaking changes
+- Examples:
+  - `feat(config): add TOML parsing with nested groups structure`
+  - `test(executor): add unit tests for timeout and graceful termination`
+  - `fix(transport): handle malformed JSON-RPC messages correctly`
+
+## Testing Requirements
+
+### Test Modification Policy
+- Tests define expected behavior - only modify tests if they are testing the wrong behavior
+- If implementation changes, update tests only if the new behavior is correct
+- Prefer fixing implementation to match tests over changing tests
+
+### Test Coverage
+- Write comprehensive unit tests for all functionality
+- Include edge cases in test coverage
+- Test both success and error paths
+- Test boundary conditions and invalid inputs
+
+### Test Organization
+- Unit tests: `#[cfg(test)] mod tests { ... }` in each source file
+- Integration tests: `tests/` directory with separate test files
+- Test utilities: `tests/common/mod.rs` for shared test helpers
+- Mock/fixture data: `tests/fixtures/` for sample configs and test scripts
+
+## Code Quality
+
+### Warning Policy
+- **All warnings are treated as errors** - the build must not produce any warnings
+- Configure `Cargo.toml` to deny warnings at the crate level
+- Use `cargo clippy -- -D warnings` to treat clippy warnings as errors
+- Only disable warnings with `#[allow(...)]` or `#[allow(clippy::...)]` when there's a solid technical reason
+- Always document the reason: `#[allow(warning_name)] // Reason: ...`
+- Common valid reasons: API compatibility, performance requirements, external interface constraints
+
+### Compiler Warnings
+- Configure `Cargo.toml` with `[lints.rust] deny = "warnings"` or use `#![deny(warnings)]` in `lib.rs`/`main.rs`
+- All Rust compiler warnings must be fixed or explicitly allowed with documented reason
+
+### Clippy Warnings
+- Run clippy with `-D warnings` flag: `cargo clippy -- -D warnings`
+- Configure `Cargo.toml` with `[lints.clippy] deny = "warnings"` for automatic enforcement
+- All clippy warnings must be fixed or explicitly allowed with documented reason
+
+### Code Style
+- Follow Rust standard formatting (`cargo fmt`)
+- Use meaningful variable and function names
+- Add comments for complex logic or non-obvious behavior
+- Keep functions focused and reasonably sized
+
+### Modularization
+- **Proper design takes precedence over arbitrary limits**
+- Aim to keep individual source files under 1000 lines when possible
+- Split large modules into submodules when it improves organization and maintainability
+- Use Rust's module system (`mod` declarations) to organize related functionality
+- Create submodules for:
+  - Distinct functional areas within a module
+  - Complex types and their implementations
+  - Separate concerns (e.g., parsing vs validation, different transport types)
+- Example: If `server.rs` grows large, split into `server/mod.rs`, `server/handlers.rs`, `server/lifecycle.rs`
+- Balance: Don't over-modularize - keep related code together when it makes sense
+
+## Project-Specific Requirements
+
+### MCP Protocol Compliance
+- Follow MCP specification strictly
+- Implement proper initialization lifecycle (`initialize` method, `initialized` notification)
+- Adhere to JSON-RPC 2.0 message format
+- Support both STDIN/STDOUT and WebSocket transports
+- Proper capability negotiation and tool registration
+
+### Web Framework
+- Use Axum for WebSocket server implementation
+- Axum provides modern async web framework with WebSocket support
+- Use `axum::extract::ws::WebSocketUpgrade` for WebSocket connections
+- Integrate with MCP transport layer for message handling
+
+### Authentication
+- Stub out JWT Bearer token authentication for WebSocket mode
+- Extract Bearer token from `Authorization: Bearer <token>` header in HTTP upgrade request
+- Validate JWT token format (stub implementation - always accept any token for now)
+- Reject connections without valid `Authorization: Bearer` header
+- Return HTTP 401 Unauthorized for authentication failures
+- Future: Implement proper JWT validation with:
+  - Secret key verification (from `--jwt-secret` CLI option or config)
+  - Token expiration checking
+  - Token signature validation
+  - Optional: Token claims validation (issuer, audience, etc.)
+
+### Security
+- Never use shell execution (no `/bin/sh -c`)
+- Use explicit argument vectors with `std::process::Command`
+- Proper escaping: each argument passed separately
+- Validate command paths (optional: whitelist/restrictions)
+- Guard against command injection attacks
+
+### Configuration
+- TOML configuration with nested groups structure
+- Support defaults at group level, overrides at tool level
+- MAX values to prevent LLM from exceeding limits
+- Runtime overrides validated against MAX values
+- Tool names: `{group_name}_{tool_name}`
+
+### Command Execution
+- Timeout handling with graceful termination (SIGTERM/SIGINT → SIGKILL)
+- `stop_after` feature for controlled duration execution (returns success, not error)
+- Configurable termination signals and grace periods
+- Capture STDOUT and STDERR separately
+- Return last N lines of STDERR on non-zero exit
+- Apply head/tail line limits to output
+
+### Error Handling
+- Use custom error types (`thiserror` crate)
+- Provide clear, actionable error messages
+- Distinguish between different error types (timeout, execution failure, config error, etc.)
+
+## Dependencies
+
+### Core Dependencies
+- `rust-mcp-sdk = "0.7.4"` - MCP protocol implementation
+- `rust-mcp-schema = "0.9.1"` - Type-safe MCP schema
+- `rust-mcp-transport = "0.6.3"` - Transport layer
+- `tokio = "1.0"` - Async runtime
+- `axum = "0.7"` - Web framework for WebSocket server
+- `axum-extra = "0.9"` - Additional Axum utilities
+- `jsonwebtoken = "9.0"` - JWT token handling for authentication
+- `tower-http = "0.5"` - HTTP middleware (for auth, CORS, etc.)
+- `toml = "0.9.8"` - TOML parsing
+- `clap = "4.5.53"` (or latest) - CLI argument parsing
+- `serde = "1.0"` - Serialization
+- `serde_json = "1.0"` - JSON handling
+- `anyhow = "1.0"` - Error handling
+- `thiserror = "1.0"` - Custom error types
+- `nix = "0.27"` (or `libc`) - For sending Unix signals
+- `tempfile = "3.0"` - For test file creation
+- `tokio-test = "0.4"` - For async testing utilities
+
+### Adding Dependencies
+- Use `cargo search` to find crates
+- Use `cargo add` to add dependencies
+- Get latest versions when possible
+- Document why each dependency is needed
+
+## Documentation
+
+### Documentation Requirements
+- **Keep documentation up to date** - Update docs when making changes that affect:
+  - User-facing behavior
+  - Configuration format
+  - CLI interface
+  - API or protocol behavior
+  - Installation or deployment procedures
+
+### Documentation Structure
+- **README.md**: Main project documentation
+  - Project overview and purpose
+  - Quick start guide
+  - Installation instructions
+  - Basic usage examples
+  - Links to detailed documentation in `docs/`
+  
+- **docs/ directory**: Detailed documentation
+  - `configuration.md` - Complete configuration reference
+  - `deployment.md` - Deployment guides (Docker, bare metal)
+  - `architecture.md` - System architecture and design decisions
+  - `development.md` - Development setup and contribution guide
+  - `api.md` - API reference (if applicable)
+  - Additional topic-specific documentation as needed
+
+### Documentation Standards
+- Use clear, concise language
+- Include code examples where helpful
+- Keep examples up to date with actual code
+- Use proper markdown formatting
+- Include table of contents for longer documents
+- Cross-reference related documentation
+
+## File Structure
+
+```
+genmcp/
+├── Cargo.toml
+├── Dockerfile
+├── README.md
+├── .cursorrules          # This file
+├── docs/                 # Documentation directory
+│   ├── configuration.md  # Configuration reference
+│   ├── deployment.md     # Deployment guides
+│   ├── architecture.md   # Architecture documentation
+│   └── development.md    # Development guide
+├── src/
+│   ├── main.rs
+│   ├── config.rs              # May split into config/mod.rs if needed
+│   ├── config_schema.rs
+│   ├── server.rs               # May split into server/mod.rs if needed
+│   ├── transport.rs            # May split into transport/mod.rs if needed
+│   ├── executor.rs
+│   ├── tools.rs
+│   └── error.rs
+├── tests/
+│   ├── common/
+│   │   └── mod.rs
+│   ├── fixtures/
+│   ├── integration/
+│   └── unit/
+└── examples/
+    └── config.toml
+```
+
+## Build Configuration
+
+### Cargo.toml Settings
+- Configure `[lints]` section to deny warnings:
+  ```toml
+  [lints]
+  rust = { level = "deny", warnings = "deny" }
+  clippy = { level = "deny", warnings = "deny" }
+  ```
+- Alternatively, add `#![deny(warnings)]` at the top of `src/lib.rs` or `src/main.rs`
+- Ensure CI/build scripts use `cargo clippy -- -D warnings`
+
+## Implementation Priorities
+
+1. **Project Setup**: Initialize Rust project, add dependencies, configure warnings as errors
+2. **Error Types**: Define custom error types early
+3. **Config Parsing**: Implement TOML configuration structure
+4. **Executor**: Secure command execution with timeouts and graceful termination
+5. **Tool Registry**: Build tool registry from config
+6. **MCP Server**: Implement MCP protocol with proper lifecycle
+7. **Transports**: Implement STDIN/STDOUT and WebSocket transports
+8. **CLI Interface**: Add CLI with schema subcommand
+9. **Schema Generation**: Implement config schema output
+10. **Testing**: Write comprehensive tests for each module
+11. **Documentation**: Create README.md and docs/ directory with detailed documentation, keep up to date
+12. **Docker**: Create Dockerfile for deployment
+
+## Notes
+
+- This is a generic MCP-to-scripts adapter
+- Must work in both Docker and on bare metal
+- Default mode is STDIN/STDOUT (for VS Code integration)
+- WebSocket mode for web service deployment
+- Configuration-driven tool registration
+- Security is paramount - no shell execution, proper escaping
+
