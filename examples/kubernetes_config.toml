@@ -1,0 +1,181 @@
+# Example configuration for Kubernetes (kubectl) commands via MCP
+#
+# This exposes a curated set of common kubectl commands as MCP tools.
+# Each tool takes a single `args` string that should include the subcommand and flags.
+#
+# Notes:
+# - These tools run `kubectl` locally and assume your kubeconfig/context is already set up.
+# - Prefer passing `--context` and `--namespace` explicitly for repeatability.
+
+# WebSocket authentication configuration (optional)
+# Uncomment to enable JWT authentication for WebSocket mode
+# [websocket_auth]
+# enabled = true
+# secret = "your-jwt-secret-key-here"
+
+[groups.kubectl]
+# Default timeout for kubectl commands (30 seconds)
+default_timeout = 30
+default_timeout_max = 600 # Allow up to 10 minutes
+
+# Default stop_after: 0 means disabled
+default_stop_after = 0
+default_stop_after_max = 3600
+
+# Termination settings
+default_termination_signal = "SIGTERM"
+default_termination_grace_period = 5
+
+# Output limits
+default_output_head_lines = 100
+default_output_head_lines_max = 1000
+default_output_tail_lines = 100
+default_output_tail_lines_max = 1000
+default_stderr_lines = 50
+default_stderr_lines_max = 500
+
+# --- Read operations ---
+
+[[groups.kubectl.tools]]
+name = "get"
+description = "Get Kubernetes resources. Provide full kubectl arguments including 'get'."
+command = "/usr/bin/kubectl"
+timeout = 30
+timeout_max = 300
+
+[groups.kubectl.tools.parameters.args]
+description = "kubectl get arguments. Include 'get' and any flags. Examples: 'get pods -A', 'get svc -n default', 'get deploy -n default -o wide'"
+example = "get pods -A"
+required = true
+
+[[groups.kubectl.tools]]
+name = "describe"
+description = "Describe a Kubernetes resource. Provide full kubectl arguments including 'describe'."
+command = "/usr/bin/kubectl"
+timeout = 30
+timeout_max = 300
+
+[groups.kubectl.tools.parameters.args]
+description = "kubectl describe arguments. Include 'describe' and the resource/name. Example: 'describe pod my-pod -n default'"
+example = "describe pod my-pod -n default"
+required = true
+
+[[groups.kubectl.tools]]
+name = "events"
+description = "List cluster or namespace events. Provide full kubectl arguments including 'get events'."
+command = "/usr/bin/kubectl"
+timeout = 30
+timeout_max = 300
+
+[groups.kubectl.tools.parameters.args]
+description = "kubectl get events arguments. Include 'get events' and any flags. Example: 'get events -n default --sort-by=.metadata.creationTimestamp'"
+example = "get events -n default --sort-by=.metadata.creationTimestamp"
+required = true
+
+# --- Apply / delete ---
+
+[[groups.kubectl.tools]]
+name = "apply"
+description = "Apply manifests. Provide full kubectl arguments including 'apply'."
+command = "/usr/bin/kubectl"
+timeout = 60
+timeout_max = 600
+
+[groups.kubectl.tools.parameters.args]
+description = "kubectl apply arguments. Include 'apply' and flags. Examples: 'apply -f k8s.yaml', 'apply -k ./overlays/dev'"
+example = "apply -f k8s.yaml"
+required = true
+
+[[groups.kubectl.tools]]
+name = "delete"
+description = "Delete resources. Provide full kubectl arguments including 'delete'."
+command = "/usr/bin/kubectl"
+timeout = 60
+timeout_max = 600
+
+[groups.kubectl.tools.parameters.args]
+description = "kubectl delete arguments. Include 'delete' and flags. Examples: 'delete pod my-pod -n default', 'delete -f k8s.yaml'"
+example = "delete pod my-pod -n default"
+required = true
+
+# --- Debugging / interactive ---
+
+[[groups.kubectl.tools]]
+name = "logs"
+description = "Fetch pod logs. Provide full kubectl arguments including 'logs'."
+command = "/usr/bin/kubectl"
+# Logs can be long-running when following
+stop_after = 0
+stop_after_max = 3600
+
+timeout = 30
+timeout_max = 600
+
+[groups.kubectl.tools.parameters.args]
+description = "kubectl logs arguments. Include 'logs' and flags. Examples: 'logs -n default deploy/myapp --tail=200', 'logs -n default pod/my-pod -c my-container --tail=200', 'logs -n default pod/my-pod -f'"
+example = "logs -n default deploy/myapp --tail=200"
+required = true
+
+[[groups.kubectl.tools]]
+name = "exec"
+description = "Execute a command in a running pod. Provide full kubectl arguments including 'exec'."
+command = "/usr/bin/kubectl"
+timeout = 30
+timeout_max = 600
+
+[groups.kubectl.tools.parameters.args]
+description = "kubectl exec arguments. Include 'exec', pod name, and command after '--'. Example: 'exec -n default pod/my-pod -- sh -lc \"ls -la\"'"
+example = "exec -n default pod/my-pod -- sh -lc 'ls -la'"
+required = true
+
+# --- Rollouts / status ---
+
+[[groups.kubectl.tools]]
+name = "rollout_status"
+description = "Wait for rollout status. Provide full kubectl arguments including 'rollout status'."
+command = "/usr/bin/kubectl"
+timeout = 60
+timeout_max = 600
+
+[groups.kubectl.tools.parameters.args]
+description = "kubectl rollout status arguments. Include 'rollout status'. Example: 'rollout status -n default deploy/myapp --timeout=120s'"
+example = "rollout status -n default deploy/myapp --timeout=120s"
+required = true
+
+# --- Context helpers ---
+
+[[groups.kubectl.tools]]
+name = "config_get_contexts"
+description = "List kubeconfig contexts. Provide full kubectl arguments including 'config get-contexts'."
+command = "/usr/bin/kubectl"
+timeout = 10
+timeout_max = 60
+
+[groups.kubectl.tools.parameters.args]
+description = "kubectl config get-contexts args. Typically just 'config get-contexts'."
+example = "config get-contexts"
+required = true
+
+[[groups.kubectl.tools]]
+name = "config_current_context"
+description = "Print the current kubeconfig context. Provide full kubectl arguments including 'config current-context'."
+command = "/usr/bin/kubectl"
+timeout = 10
+timeout_max = 60
+
+[groups.kubectl.tools.parameters.args]
+description = "kubectl config current-context args. Typically just 'config current-context'."
+example = "config current-context"
+required = true
+
+[[groups.kubectl.tools]]
+name = "config_use_context"
+description = "Switch kubeconfig context. Provide full kubectl arguments including 'config use-context'."
+command = "/usr/bin/kubectl"
+timeout = 10
+timeout_max = 60
+
+[groups.kubectl.tools.parameters.args]
+description = "kubectl config use-context args. Include 'config use-context <name>'."
+example = "config use-context my-context"
+required = true

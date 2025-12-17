@@ -10,6 +10,12 @@ Basic example with common Unix/shell commands (mv, cp, awk, sed, wc, grep, etc.)
 ### `docker_config.toml`
 Example configuration for Docker commands (`docker run`, `docker ps`, `docker stop`, etc.). Demonstrates how to expose Docker CLI as MCP tools.
 
+### `podman_config.toml`
+Example configuration for Podman commands (`podman run`, `podman ps`, `podman stop`, etc.). This is a Podman-adapted version of the Docker example.
+
+### `kubernetes_config.toml`
+Example configuration for Kubernetes commands via `kubectl` (`kubectl get`, `kubectl apply`, `kubectl logs`, etc.).
+
 ### `just_config.toml`
 Configuration for running `just` (justfile runner) targets. Includes tools for:
 - Running just targets
@@ -91,4 +97,5 @@ head -c 32 /dev/urandom | base64
 - [Configuration Reference](../docs/configuration.md) - Complete configuration documentation
 - [Deployment Guide](../docs/deployment.md) - Deployment instructions
 - [Architecture](../docs/architecture.md) - System architecture
+
 

@@ -1,27 +1,27 @@
 # Example configuration for running `just` targets via MCP
 # This demonstrates how to expose justfile targets as MCP tools
 
-# WebSocket authentication configuration
-# Enable JWT authentication for WebSocket mode
-[websocket_auth]
-enabled = true
-secret = "your-jwt-secret-key-change-this-in-production"
+# WebSocket authentication configuration (optional)
+# Uncomment to enable JWT authentication for WebSocket mode
+# [websocket_auth]
+# enabled = true
+# secret = "your-jwt-secret-key-change-this-in-production"
 
-# To disable authentication entirely, omit the [websocket_auth] section above
+# To disable authentication entirely, omit the [websocket_auth] section
 # Or set: enabled = false
 
 [groups.just]
 # Default timeout for just commands (30 seconds)
 default_timeout = 30
-default_timeout_max = 300  # Allow up to 5 minutes for long-running targets
+default_timeout_max = 300 # Allow up to 5 minutes for long-running targets
 
 # Default stop_after: 0 means disabled (wait for normal completion)
 default_stop_after = 0
-default_stop_after_max = 3600  # Allow up to 1 hour for controlled duration
+default_stop_after_max = 3600 # Allow up to 1 hour for controlled duration
 
 # Termination settings
 default_termination_signal = "SIGTERM"
-default_termination_grace_period = 5  # 5 seconds grace period before SIGKILL
+default_termination_grace_period = 5   # 5 seconds grace period before SIGKILL
 
 # Output limits
 default_output_head_lines = 100
@@ -33,93 +33,119 @@ default_output_tail_lines_max = 1000
 default_stderr_lines = 50
 default_stderr_lines_max = 500
 
-  # Run a specific just target
-  [[groups.just.tools]]
-  name = "run"
-  description = "Run a justfile target. Usage: just <target> [args...]"
-  command = "/usr/bin/just"
-  
-    [groups.just.tools.parameters.target]
-    description = "The justfile target name to run"
-    example = "build"
-    required = true
-    
-    [groups.just.tools.parameters.args]
-    description = "Additional arguments to pass to the target (space-separated)"
-    example = "--release --verbose"
-    required = false
+# Run a specific just target
+[[groups.just.tools]]
+name = "run"
+description = "Run a justfile target. Usage: just <target> [args...]"
+command = "/usr/bin/just"
 
-  # List available just targets
-  [[groups.just.tools]]
-  name = "list"
-  description = "List all available justfile targets"
-  command = "/usr/bin/just"
-  timeout = 10  # Quick operation
-  
-    [groups.just.tools.parameters.args]
-    description = "Additional arguments (e.g., '--list' for detailed list)"
-    example = "--list"
-    required = false
+# Ensure target comes before args
+arg_order = ["target", "args"]
 
-  # Show justfile contents
-  [[groups.just.tools]]
-  name = "show"
-  description = "Show the contents of a justfile target"
-  command = "/usr/bin/just"
-  timeout = 10  # Quick operation
-  
-    [groups.just.tools.parameters.target]
-    description = "The target name to show"
-    example = "build"
-    required = true
+[groups.just.tools.parameters.target]
+description = "The justfile target name to run"
+example = "build"
+required = true
 
-  # Run just with custom working directory
-  [[groups.just.tools]]
-  name = "run_in_dir"
-  description = "Run a justfile target in a specific directory"
-  command = "/usr/bin/just"
-  timeout = 60  # Longer timeout for directory operations
-  
-    [groups.just.tools.parameters.dir]
-    description = "Working directory where the justfile is located"
-    example = "/path/to/project"
-    required = true
-    
-    [groups.just.tools.parameters.target]
-    description = "The justfile target name to run"
-    example = "test"
-    required = true
-    
-    [groups.just.tools.parameters.args]
-    description = "Additional arguments to pass to the target"
-    example = "--verbose"
-    required = false
+[groups.just.tools.parameters.args]
+description = "Additional arguments to pass to the target (space-separated)"
+example = "--release --verbose"
+required = false
 
-  # Run just with environment variables
-  [[groups.just.tools]]
-  name = "run_with_env"
-  description = "Run a justfile target with custom environment variables (passed via just's --env flag)"
-  command = "/usr/bin/just"
-  
-    [groups.just.tools.parameters.target]
-    description = "The justfile target name to run"
-    example = "deploy"
-    required = true
-    
-    [groups.just.tools.parameters.env_vars]
-    description = "Environment variables as KEY=VALUE pairs, space-separated"
-    example = "ENV=production DEBUG=false"
-    required = false
+# List available just targets
+[[groups.just.tools]]
+name = "list"
+description = "List all available justfile targets"
+command = "/usr/bin/just"
+timeout = 10                                        # Quick operation
 
-  # Dry run - show what would be executed
-  [[groups.just.tools]]
-  name = "dry_run"
-  description = "Show what commands would be executed without actually running them"
-  command = "/usr/bin/just"
-  timeout = 10  # Quick operation
-  
-    [groups.just.tools.parameters.target]
-    description = "The target name to dry-run"
-    example = "deploy"
-    required = true
+[groups.just.tools.parameters.args]
+description = "Arguments for listing recipes. Use '--list' (or '-l') to list available recipes. Optional: pass module names after --list."
+example = "--list"
+required = false
 
+# Show justfile contents
+[[groups.just.tools]]
+name = "show"
+description = "Show the contents of a justfile target"
+command = "/usr/bin/just"
+timeout = 10                                           # Quick operation
+
+[groups.just.tools.parameters.target]
+description = "The target name to show"
+example = "build"
+required = true
+flag = "--show"
+takes_value = true
+
+# Run just with custom working directory
+[[groups.just.tools]]
+name = "run_in_dir"
+description = "Run a justfile target in a specific directory"
+command = "/usr/bin/just"
+timeout = 60                                                  # Longer timeout for directory operations
+
+# Ensure global flags come before target/args
+arg_order = ["dir", "justfile", "target", "args"]
+
+[groups.just.tools.parameters.dir]
+description = "Working directory where the justfile is located"
+example = "/path/to/project"
+required = true
+flag = "--working-directory"
+takes_value = true
+
+[groups.just.tools.parameters.target]
+description = "The justfile target name to run"
+example = "test"
+required = true
+
+[groups.just.tools.parameters.justfile]
+description = "Path to the justfile to use (required when --working-directory is set)"
+example = "justfile"
+required = true
+flag = "--justfile"
+takes_value = true
+
+[groups.just.tools.parameters.args]
+description = "Additional arguments to pass to the target"
+example = "--verbose"
+required = false
+
+# Run just with environment variables
+[[groups.just.tools]]
+name = "run_with_env"
+description = "Run a justfile target with custom variables via just's --set <VARIABLE> <VALUE>. NOTE: This example config does not currently split env_vars into two values; prefer using just_run and include --set in args if needed."
+command = "/usr/bin/just"
+
+[groups.just.tools.parameters.target]
+description = "The justfile target name to run"
+example = "deploy"
+required = true
+
+[groups.just.tools.parameters.env_vars]
+description = "Environment variables as KEY=VALUE pairs, space-separated"
+example = "ENV=production DEBUG=false"
+required = false
+
+# Dry run - show what would be executed
+[[groups.just.tools]]
+name = "dry_run"
+description = "Show what commands would be executed without actually running them"
+command = "/usr/bin/just"
+timeout = 10                                                                       # Quick operation
+
+# Ensure --dry-run is always set for this tool
+arg_order = ["dry_run", "target"]
+
+[groups.just.tools.parameters.dry_run]
+description = "Enable just dry-run mode (emits --dry-run)"
+example = "true"
+required = true
+flag = "--dry-run"
+takes_value = false
+
+[groups.just.tools.parameters.target]
+description = "The target name to dry-run"
+example = "deploy"
+required = true

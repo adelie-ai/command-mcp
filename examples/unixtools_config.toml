@@ -1,0 +1,250 @@
+# Example genmcp configuration file
+# This demonstrates configuring common Unix/shell commands
+
+# WebSocket authentication configuration (optional)
+# If omitted, authentication is disabled for WebSocket mode
+# [websocket_auth]
+# enabled = true  # Enable JWT authentication (default: true)
+# secret = "your-secret-key-here"  # Required if enabled=true
+
+[groups.file_operations]
+default_timeout = 30
+default_timeout_max = 300
+default_output_head_lines = 100
+default_output_tail_lines = 100
+default_output_head_lines_max = 1000
+default_output_tail_lines_max = 1000
+default_stderr_lines = 50
+default_stderr_lines_max = 500
+
+[[groups.file_operations.tools]]
+name = "mv"
+description = "Move or rename files and directories by executing the Unix /bin/mv command. This changes the filesystem (may overwrite if the underlying mv is invoked with such behavior)."
+command = "/bin/mv"
+arg_order = ["source", "dest"]
+
+[groups.file_operations.tools.parameters.source]
+description = "Source file or directory path"
+required = true
+
+[groups.file_operations.tools.parameters.dest]
+description = "Destination file or directory path"
+required = true
+
+[[groups.file_operations.tools]]
+name = "cp"
+description = "Copy files (and optionally directories) by executing the Unix /bin/cp command. Use the recursive flag to copy directories."
+command = "/bin/cp"
+# Place flags first, then positional operands (source, dest)
+arg_order = ["recursive", "source", "dest"]
+
+[groups.file_operations.tools.parameters.source]
+description = "Source file or directory path"
+required = true
+
+[groups.file_operations.tools.parameters.dest]
+description = "Destination file or directory path"
+required = true
+
+[groups.file_operations.tools.parameters.recursive]
+description = "Copy directories recursively"
+flag = "-r"
+example = "true"
+required = false
+
+[[groups.file_operations.tools]]
+name = "rm"
+description = "Delete files (and optionally directories) by executing the Unix /bin/rm command. This is destructive and cannot be undone; use the recursive flag to remove directories."
+command = "/bin/rm"
+# Flags first, then the path operand
+arg_order = ["recursive", "path"]
+
+[groups.file_operations.tools.parameters.path]
+description = "File or directory path to remove"
+required = true
+
+[groups.file_operations.tools.parameters.recursive]
+description = "Remove directories and their contents recursively"
+flag = "-r"
+example = "true"
+required = false
+
+[groups.text_processing]
+default_timeout = 60
+default_timeout_max = 600
+default_output_head_lines = 200
+default_output_tail_lines = 200
+default_output_head_lines_max = 2000
+default_output_tail_lines_max = 2000
+
+[[groups.text_processing.tools]]
+name = "grep"
+description = "Search for text patterns by executing the Unix /bin/grep command. Provide a pattern and a file or directory; use recursive to search directories."
+command = "/bin/grep"
+timeout = 120
+timeout_max = 600
+arg_order = ["recursive", "pattern", "file"]
+
+[groups.text_processing.tools.parameters.pattern]
+description = "Pattern to search for"
+required = true
+
+[groups.text_processing.tools.parameters.file]
+description = "File to search in"
+required = true
+
+[groups.text_processing.tools.parameters.recursive]
+description = "Search recursively in directories"
+flag = "-r"
+example = "true"
+required = false
+
+[[groups.text_processing.tools]]
+name = "rg"
+description = "Fast text search by executing the Unix ripgrep CLI (rg) from PATH. Provide a pattern and a file/directory path; returns matching lines."
+command = "rg"
+timeout = 120
+timeout_max = 600
+arg_order = ["pattern", "path"]
+
+[groups.text_processing.tools.parameters.pattern]
+description = "Pattern to search for"
+required = true
+
+[groups.text_processing.tools.parameters.path]
+description = "File or directory to search in"
+required = true
+
+[[groups.text_processing.tools]]
+name = "sed"
+description = "Apply text transformations by executing the Unix /bin/sed stream editor on an input file. The script argument is passed directly to sed."
+command = "/bin/sed"
+arg_order = ["script", "file"]
+
+[groups.text_processing.tools.parameters.script]
+description = "Sed script/command"
+required = true
+
+[groups.text_processing.tools.parameters.file]
+description = "Input file"
+required = true
+
+[[groups.text_processing.tools]]
+name = "awk"
+description = "Process structured text by executing the Unix /usr/bin/awk interpreter. The program argument is the awk script; file is optional (stdin if omitted)."
+command = "/usr/bin/awk"
+arg_order = ["program", "file"]
+
+[groups.text_processing.tools.parameters.program]
+description = "AWK program/script"
+required = true
+
+[groups.text_processing.tools.parameters.file]
+description = "Input file"
+required = false
+
+[[groups.text_processing.tools]]
+name = "wc"
+description = "Count lines/words/bytes by executing the Unix /usr/bin/wc command on a file. Use the lines/words flags to request specific counts."
+command = "/usr/bin/wc"
+output_head_lines = 10
+output_tail_lines = 10
+arg_order = ["lines", "words", "file"]
+
+[groups.text_processing.tools.parameters.file]
+description = "File to count"
+required = true
+
+[groups.text_processing.tools.parameters.lines]
+description = "Count lines only"
+flag = "-l"
+example = "true"
+required = false
+
+[groups.text_processing.tools.parameters.words]
+description = "Count words only"
+flag = "-w"
+example = "true"
+required = false
+
+[groups.file_search]
+default_timeout = 300
+default_timeout_max = 1800
+default_output_head_lines = 500
+default_output_tail_lines = 500
+default_output_head_lines_max = 5000
+default_output_tail_lines_max = 5000
+
+[[groups.file_search.tools]]
+name = "find"
+description = "Search the filesystem by executing the Unix /usr/bin/find command. Provide a starting path and optional -name pattern and -type filter."
+command = "/usr/bin/find"
+timeout = 600
+timeout_max = 3600
+# `find <path> -name <pattern> -type <f|d>`
+arg_order = ["path", "name", "type"]
+
+[groups.file_search.tools.parameters.path]
+description = "Starting directory path"
+required = true
+
+[groups.file_search.tools.parameters.name]
+description = "Search by filename pattern"
+flag = "-name"
+takes_value = true
+required = false
+
+[groups.file_search.tools.parameters.type]
+description = "Search by file type (f=file, d=directory)"
+flag = "-type"
+takes_value = true
+required = false
+
+[[groups.file_search.tools]]
+name = "fd"
+description = "Search for files by executing the Unix fd CLI from PATH (a faster, user-friendly alternative to find). Provide a pattern and optional starting directory."
+command = "fd"
+timeout = 300
+timeout_max = 1800
+arg_order = ["pattern", "path"]
+
+[groups.file_search.tools.parameters.pattern]
+description = "Search pattern"
+required = true
+
+[groups.file_search.tools.parameters.path]
+description = "Starting directory path"
+required = false
+
+[groups.monitoring]
+default_timeout = 0
+default_timeout_max = 3600
+default_stop_after = 20
+default_stop_after_max = 3600
+default_termination_signal = "SIGINT"
+
+[[groups.monitoring.tools]]
+name = "tail"
+description = "View the end of a file by executing the Unix /usr/bin/tail command. Use follow to stream updates (-f) and lines to control how many lines are shown (-n)."
+command = "/usr/bin/tail"
+stop_after = 30
+stop_after_max = 3600
+# Options first, then the file operand
+arg_order = ["follow", "lines", "file"]
+
+[groups.monitoring.tools.parameters.file]
+description = "File to tail"
+required = true
+
+[groups.monitoring.tools.parameters.follow]
+description = "Follow file changes (like tail -f)"
+flag = "-f"
+example = "true"
+required = false
+
+[groups.monitoring.tools.parameters.lines]
+description = "Number of lines to display"
+flag = "-n"
+takes_value = true
+example = "50"
+required = false

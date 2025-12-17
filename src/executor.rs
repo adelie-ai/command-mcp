@@ -45,23 +45,26 @@ pub async fn execute_command(
     cmd.stderr(Stdio::piped());
 
     // Start the process
-    let mut child = cmd.spawn()
+    let mut child = cmd
+        .spawn()
         .map_err(|e| ExecutionError::CommandNotFound(format!("{}: {}", command, e)))?;
 
-    let stdout_handle = child.stdout.take().ok_or_else(|| {
-        ExecutionError::CommandFailed {
+    let stdout_handle = child
+        .stdout
+        .take()
+        .ok_or_else(|| ExecutionError::CommandFailed {
             command: command.to_string(),
             exit_code: None,
             stderr: "Failed to capture stdout".to_string(),
-        }
-    })?;
-    let stderr_handle = child.stderr.take().ok_or_else(|| {
-        ExecutionError::CommandFailed {
+        })?;
+    let stderr_handle = child
+        .stderr
+        .take()
+        .ok_or_else(|| ExecutionError::CommandFailed {
             command: command.to_string(),
             exit_code: None,
             stderr: "Failed to capture stderr".to_string(),
-        }
-    })?;
+        })?;
 
     // Spawn tasks to read stdout and stderr
     let stdout_task = tokio::spawn(async move {
@@ -91,7 +94,8 @@ pub async fn execute_command(
                 output_head_lines,
                 output_tail_lines,
                 command,
-            ).await;
+            )
+            .await;
         }
     }
 
@@ -114,13 +118,12 @@ pub async fn execute_command(
                 stopped_after: false,
             })
         }
-        Ok(Err(e)) => {
-            Err(ExecutionError::CommandFailed {
-                command: command.to_string(),
-                exit_code: None,
-                stderr: format!("Process wait error: {}", e),
-            }.into())
+        Ok(Err(e)) => Err(ExecutionError::CommandFailed {
+            command: command.to_string(),
+            exit_code: None,
+            stderr: format!("Process wait error: {}", e),
         }
+        .into()),
         Err(_) => {
             // Timeout occurred
             handle_timeout(
@@ -134,7 +137,8 @@ pub async fn execute_command(
                 output_tail_lines,
                 stderr_lines,
                 command,
-            ).await
+            )
+            .await
         }
     }
 }
@@ -260,7 +264,8 @@ async fn handle_timeout(
         Err(ExecutionError::Timeout {
             command: command.to_string(),
             timeout: timeout_secs,
-        }.into())
+        }
+        .into())
     }
 }
 
@@ -283,16 +288,28 @@ fn apply_line_limits(lines: &[&str], head_lines: u64, tail_lines: u64) -> String
         // Return head + tail with separator
         let head_part: Vec<&str> = lines.iter().take(head).copied().collect();
         let tail_part: Vec<&str> = lines.iter().skip(total_lines - tail).copied().collect();
-        format!("{}\n... ({} lines omitted) ...\n{}", 
-                head_part.join("\n"),
-                total_lines - head - tail,
-                tail_part.join("\n"))
+        format!(
+            "{}\n... ({} lines omitted) ...\n{}",
+            head_part.join("\n"),
+            total_lines - head - tail,
+            tail_part.join("\n")
+        )
     } else if head > 0 {
         // Head only - no separator needed
-        lines.iter().take(head).copied().collect::<Vec<_>>().join("\n")
+        lines
+            .iter()
+            .take(head)
+            .copied()
+            .collect::<Vec<_>>()
+            .join("\n")
     } else {
         // Tail only - no separator needed
-        lines.iter().skip(total_lines - tail).copied().collect::<Vec<_>>().join("\n")
+        lines
+            .iter()
+            .skip(total_lines - tail)
+            .copied()
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
 
@@ -316,12 +333,12 @@ async fn terminate_process(pid: u32, signal: TerminationSignal, grace_period: u6
     {
         use nix::sys::signal::{kill, Signal};
         use nix::unistd::Pid;
-        
+
         let nix_signal = match signal {
             TerminationSignal::Sigterm => Signal::SIGTERM,
             TerminationSignal::Sigint => Signal::SIGINT,
         };
-        
+
         if kill(Pid::from_raw(pid as i32), Some(nix_signal)).is_ok() {
             // Wait for grace period
             sleep(Duration::from_secs(grace_period)).await;
@@ -368,8 +385,10 @@ mod tests {
             100,
             100,
             50,
-        ).await.unwrap();
-        
+        )
+        .await
+        .unwrap();
+
         assert_eq!(result.exit_code, 0);
         assert!(result.stdout.contains("hello"));
         assert!(!result.stopped_after);
@@ -387,8 +406,10 @@ mod tests {
             100,
             100,
             50,
-        ).await.unwrap();
-        
+        )
+        .await
+        .unwrap();
+
         assert_eq!(result.exit_code, 0);
         assert!(result.stdout.contains("hello"));
         assert!(result.stdout.contains("world"));
@@ -406,8 +427,9 @@ mod tests {
             100,
             100,
             50,
-        ).await;
-        
+        )
+        .await;
+
         assert!(result.is_err());
         if let Err(e) = result {
             match e {
@@ -429,8 +451,10 @@ mod tests {
             100,
             100,
             50,
-        ).await.unwrap();
-        
+        )
+        .await
+        .unwrap();
+
         assert_eq!(result.exit_code, 42);
     }
 
@@ -439,10 +463,10 @@ mod tests {
         // Create output with many lines
         let lines: Vec<String> = (1..=200).map(|i| format!("line {}", i)).collect();
         let output = lines.join("\n");
-        
+
         let limited = apply_line_limits_to_string(&output, 10, 0);
         let limited_lines: Vec<&str> = limited.lines().collect();
-        
+
         // When head_only, should return exactly 10 lines (no separator)
         assert_eq!(limited_lines.len(), 10);
         assert_eq!(limited_lines[0], "line 1");
@@ -454,10 +478,10 @@ mod tests {
         // Create output with many lines
         let lines: Vec<String> = (1..=200).map(|i| format!("line {}", i)).collect();
         let output = lines.join("\n");
-        
+
         let limited = apply_line_limits_to_string(&output, 0, 10);
         let limited_lines: Vec<&str> = limited.lines().collect();
-        
+
         // When tail_only, should return exactly 10 lines (no separator)
         assert_eq!(limited_lines.len(), 10);
         assert_eq!(limited_lines[0], "line 191");
@@ -469,10 +493,10 @@ mod tests {
         // Create output with many lines
         let lines: Vec<String> = (1..=200).map(|i| format!("line {}", i)).collect();
         let output = lines.join("\n");
-        
+
         let limited = apply_line_limits_to_string(&output, 5, 5);
         let limited_lines: Vec<&str> = limited.lines().collect();
-        
+
         // Should have: 5 head + separator + 5 tail = 11 lines
         assert!(limited_lines.len() >= 10);
         assert!(limited.contains("line 1"));
@@ -484,9 +508,9 @@ mod tests {
     async fn test_output_line_limiting_within_limits() {
         // Create output with few lines
         let output = "line 1\nline 2\nline 3";
-        
+
         let limited = apply_line_limits_to_string(output, 10, 10);
-        
+
         // Should return all lines since within limits
         assert_eq!(limited, output);
     }
@@ -496,7 +520,7 @@ mod tests {
         let stderr = "error 1\nerror 2\nerror 3\nerror 4\nerror 5";
         let last_2 = get_last_n_lines(stderr, 2);
         let lines: Vec<&str> = last_2.lines().collect();
-        
+
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0], "error 4");
         assert_eq!(lines[1], "error 5");
@@ -507,7 +531,7 @@ mod tests {
         let stderr = "error 1\nerror 2";
         let last_10 = get_last_n_lines(stderr, 10);
         let lines: Vec<&str> = last_10.lines().collect();
-        
+
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0], "error 1");
         assert_eq!(lines[1], "error 2");
@@ -517,7 +541,10 @@ mod tests {
     async fn test_stderr_capture() {
         let result = execute_command(
             "/bin/sh",
-            &["-c".to_string(), "echo 'stdout' >&1 && echo 'stderr' >&2 && exit 1".to_string()],
+            &[
+                "-c".to_string(),
+                "echo 'stdout' >&1 && echo 'stderr' >&2 && exit 1".to_string(),
+            ],
             10,
             None,
             TerminationSignal::Sigterm,
@@ -525,8 +552,10 @@ mod tests {
             100,
             100,
             50,
-        ).await.unwrap();
-        
+        )
+        .await
+        .unwrap();
+
         assert_eq!(result.exit_code, 1);
         assert!(result.stdout.contains("stdout"));
         assert!(result.stderr.contains("stderr"));
@@ -538,15 +567,16 @@ mod tests {
         let result = execute_command(
             "/bin/sleep",
             &["5".to_string()],
-            1,  // 1 second timeout
+            1, // 1 second timeout
             None,
             TerminationSignal::Sigterm,
-            1,  // 1 second grace period
+            1, // 1 second grace period
             100,
             100,
             50,
-        ).await;
-        
+        )
+        .await;
+
         // Should timeout (may succeed if system is very fast, but unlikely with 5s sleep)
         // On most systems this will timeout
         if let Err(crate::error::GenMcpError::Execution(ExecutionError::Timeout { .. })) = result {
@@ -563,15 +593,16 @@ mod tests {
         let result = execute_command(
             "/bin/sleep",
             &["5".to_string()],
-            10,  // Long timeout
-            Some(1),  // Stop after 1 second
+            10,      // Long timeout
+            Some(1), // Stop after 1 second
             TerminationSignal::Sigterm,
-            1,  // 1 second grace period
+            1, // 1 second grace period
             100,
             100,
             50,
-        ).await;
-        
+        )
+        .await;
+
         // Should succeed (stop_after returns success)
         if let Ok(result) = result {
             // On most systems, this should be stopped_after
@@ -591,14 +622,16 @@ mod tests {
             "/bin/echo",
             &["hello".to_string()],
             10,
-            Some(0),  // Disabled
+            Some(0), // Disabled
             TerminationSignal::Sigterm,
             5,
             100,
             100,
             50,
-        ).await.unwrap();
-        
+        )
+        .await
+        .unwrap();
+
         assert!(!result.stopped_after);
         assert_eq!(result.exit_code, 0);
     }
@@ -615,8 +648,10 @@ mod tests {
             100,
             100,
             50,
-        ).await.unwrap();
-        
+        )
+        .await
+        .unwrap();
+
         assert_eq!(result.exit_code, 0);
         assert!(result.stdout.is_empty());
     }
@@ -634,8 +669,10 @@ mod tests {
             100,
             100,
             50,
-        ).await.unwrap();
-        
+        )
+        .await
+        .unwrap();
+
         // Should just echo the string, not execute rm
         assert!(result.stdout.contains("hello; rm -rf /"));
         assert_eq!(result.exit_code, 0);

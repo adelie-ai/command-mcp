@@ -12,7 +12,10 @@ pub fn output_schema(format: &str) -> Result<()> {
         "toml" => output_toml_example(),
         "markdown" => output_markdown_docs(),
         _ => {
-            eprintln!("Invalid format: {}. Must be 'json', 'toml', or 'markdown'", format);
+            eprintln!(
+                "Invalid format: {}. Must be 'json', 'toml', or 'markdown'",
+                format
+            );
             #[cfg(not(test))]
             {
                 std::process::exit(1);
@@ -56,6 +59,11 @@ fn output_json_schema() -> Result<()> {
                 "name": { "type": "string" },
                 "description": { "type": "string" },
                 "command": { "type": "string" },
+                "arg_order": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "Optional explicit argument order for parameters"
+                },
                 "timeout": { "type": "integer" },
                 "timeout_max": { "type": "integer" },
                 "stop_after": { "type": "integer" },
@@ -75,6 +83,8 @@ fn output_json_schema() -> Result<()> {
                     "properties": {
                       "description": { "type": "string" },
                       "example": { "type": "string" },
+                      "flag": { "type": "string" },
+                      "takes_value": { "type": "boolean" },
                       "required": { "type": "boolean" }
                     }
                   }
@@ -173,6 +183,7 @@ Each tool can override group defaults:
 - `name`: Base tool name (final name: `{group_name}_{tool_name}`)
 - `description`: Description for LLM
 - `command`: Command to execute
+- `arg_order` (optional): Explicit parameter evaluation order when building CLI args
 - `timeout`, `timeout_max`: Override group timeout settings
 - `stop_after`, `stop_after_max`: Override group stop_after settings
 - `termination_signal`: Override group termination signal
@@ -187,6 +198,8 @@ Each tool can override group defaults:
 Each parameter has:
 - `description`: Parameter description
 - `example`: Example value (optional)
+- `flag` (optional): Emit this CLI flag when the parameter is provided (e.g. `-r`, `-n`)
+- `takes_value` (optional, boolean): If `true`, emit `flag` followed by the parameter value (e.g. `-n 50`)
 - `required`: Whether parameter is required (default: false)
 
 ## WebSocket Authentication Configuration

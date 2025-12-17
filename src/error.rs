@@ -86,18 +86,12 @@ pub enum ExecutionError {
 
     /// Command timeout
     #[error("Command timed out after {timeout} seconds: {command}")]
-    Timeout {
-        command: String,
-        timeout: u64,
-    },
+    Timeout { command: String, timeout: u64 },
 
     /// Process was stopped after stop_after duration (this is success, not error)
     /// Note: This should not be used as an error, but included for completeness
     #[error("Process stopped after {duration} seconds: {command}")]
-    StoppedAfter {
-        command: String,
-        duration: u64,
-    },
+    StoppedAfter { command: String, duration: u64 },
 
     /// Failed to send termination signal
     #[error("Failed to send termination signal to process: {0}")]
@@ -141,11 +135,7 @@ pub enum McpError {
 
     /// Runtime override exceeds MAX value
     #[error("Runtime override '{field}' ({value}) exceeds MAX value ({max})")]
-    OverrideExceedsMax {
-        field: String,
-        value: u64,
-        max: u64,
-    },
+    OverrideExceedsMax { field: String, value: u64, max: u64 },
 }
 
 /// Transport layer errors

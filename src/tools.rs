@@ -51,13 +51,22 @@ impl ToolRegistry {
             constraints.push(format!("Maximum timeout: {} seconds", tool.timeout_max));
         }
         if tool.stop_after_max != 3600 {
-            constraints.push(format!("Maximum stop_after: {} seconds", tool.stop_after_max));
+            constraints.push(format!(
+                "Maximum stop_after: {} seconds",
+                tool.stop_after_max
+            ));
         }
         if tool.output_head_lines_max != 1000 {
-            constraints.push(format!("Maximum output_head_lines: {}", tool.output_head_lines_max));
+            constraints.push(format!(
+                "Maximum output_head_lines: {}",
+                tool.output_head_lines_max
+            ));
         }
         if tool.output_tail_lines_max != 1000 {
-            constraints.push(format!("Maximum output_tail_lines: {}", tool.output_tail_lines_max));
+            constraints.push(format!(
+                "Maximum output_tail_lines: {}",
+                tool.output_tail_lines_max
+            ));
         }
         if tool.stderr_lines_max != 500 {
             constraints.push(format!("Maximum stderr_lines: {}", tool.stderr_lines_max));
@@ -74,11 +83,20 @@ impl ToolRegistry {
 
         for (param_name, param) in &tool.parameters {
             let mut param_schema = serde_json::Map::new();
-            param_schema.insert("type".to_string(), serde_json::Value::String("string".to_string()));
-            param_schema.insert("description".to_string(), serde_json::Value::String(param.description.clone()));
-            
+            param_schema.insert(
+                "type".to_string(),
+                serde_json::Value::String("string".to_string()),
+            );
+            param_schema.insert(
+                "description".to_string(),
+                serde_json::Value::String(param.description.clone()),
+            );
+
             if let Some(example) = &param.example {
-                param_schema.insert("example".to_string(), serde_json::Value::String(example.clone()));
+                param_schema.insert(
+                    "example".to_string(),
+                    serde_json::Value::String(example.clone()),
+                );
             }
 
             properties.insert(param_name.clone(), serde_json::Value::Object(param_schema));
@@ -90,43 +108,89 @@ impl ToolRegistry {
 
         // Add runtime override parameters
         let mut timeout_schema = serde_json::Map::new();
-        timeout_schema.insert("type".to_string(), serde_json::Value::String("number".to_string()));
-        timeout_schema.insert("description".to_string(), serde_json::Value::String(
-            format!("Timeout in seconds (default: {}, max: {})", tool.timeout, tool.timeout_max)
-        ));
-        properties.insert("timeout".to_string(), serde_json::Value::Object(timeout_schema));
+        timeout_schema.insert(
+            "type".to_string(),
+            serde_json::Value::String("number".to_string()),
+        );
+        timeout_schema.insert(
+            "description".to_string(),
+            serde_json::Value::String(format!(
+                "Timeout in seconds (default: {}, max: {})",
+                tool.timeout, tool.timeout_max
+            )),
+        );
+        properties.insert(
+            "timeout".to_string(),
+            serde_json::Value::Object(timeout_schema),
+        );
 
         let mut stop_after_schema = serde_json::Map::new();
-        stop_after_schema.insert("type".to_string(), serde_json::Value::String("number".to_string()));
-        stop_after_schema.insert("description".to_string(), serde_json::Value::String(
-            format!("Stop after duration in seconds for long-running processes (default: {}, max: {})", 
-                    tool.stop_after, tool.stop_after_max)
-        ));
-        properties.insert("stop_after".to_string(), serde_json::Value::Object(stop_after_schema));
+        stop_after_schema.insert(
+            "type".to_string(),
+            serde_json::Value::String("number".to_string()),
+        );
+        stop_after_schema.insert(
+            "description".to_string(),
+            serde_json::Value::String(format!(
+                "Stop after duration in seconds for long-running processes (default: {}, max: {})",
+                tool.stop_after, tool.stop_after_max
+            )),
+        );
+        properties.insert(
+            "stop_after".to_string(),
+            serde_json::Value::Object(stop_after_schema),
+        );
 
         let mut output_head_schema = serde_json::Map::new();
-        output_head_schema.insert("type".to_string(), serde_json::Value::String("number".to_string()));
-        output_head_schema.insert("description".to_string(), serde_json::Value::String(
-            format!("Number of lines from head of output (default: {}, max: {})", 
-                    tool.output_head_lines, tool.output_head_lines_max)
-        ));
-        properties.insert("output_head_lines".to_string(), serde_json::Value::Object(output_head_schema));
+        output_head_schema.insert(
+            "type".to_string(),
+            serde_json::Value::String("number".to_string()),
+        );
+        output_head_schema.insert(
+            "description".to_string(),
+            serde_json::Value::String(format!(
+                "Number of lines from head of output (default: {}, max: {})",
+                tool.output_head_lines, tool.output_head_lines_max
+            )),
+        );
+        properties.insert(
+            "output_head_lines".to_string(),
+            serde_json::Value::Object(output_head_schema),
+        );
 
         let mut output_tail_schema = serde_json::Map::new();
-        output_tail_schema.insert("type".to_string(), serde_json::Value::String("number".to_string()));
-        output_tail_schema.insert("description".to_string(), serde_json::Value::String(
-            format!("Number of lines from tail of output (default: {}, max: {})", 
-                    tool.output_tail_lines, tool.output_tail_lines_max)
-        ));
-        properties.insert("output_tail_lines".to_string(), serde_json::Value::Object(output_tail_schema));
+        output_tail_schema.insert(
+            "type".to_string(),
+            serde_json::Value::String("number".to_string()),
+        );
+        output_tail_schema.insert(
+            "description".to_string(),
+            serde_json::Value::String(format!(
+                "Number of lines from tail of output (default: {}, max: {})",
+                tool.output_tail_lines, tool.output_tail_lines_max
+            )),
+        );
+        properties.insert(
+            "output_tail_lines".to_string(),
+            serde_json::Value::Object(output_tail_schema),
+        );
 
         let mut stderr_schema = serde_json::Map::new();
-        stderr_schema.insert("type".to_string(), serde_json::Value::String("number".to_string()));
-        stderr_schema.insert("description".to_string(), serde_json::Value::String(
-            format!("Number of lines from stderr to return on error (default: {}, max: {})", 
-                    tool.stderr_lines, tool.stderr_lines_max)
-        ));
-        properties.insert("stderr_lines".to_string(), serde_json::Value::Object(stderr_schema));
+        stderr_schema.insert(
+            "type".to_string(),
+            serde_json::Value::String("number".to_string()),
+        );
+        stderr_schema.insert(
+            "description".to_string(),
+            serde_json::Value::String(format!(
+                "Number of lines from stderr to return on error (default: {}, max: {})",
+                tool.stderr_lines, tool.stderr_lines_max
+            )),
+        );
+        properties.insert(
+            "stderr_lines".to_string(),
+            serde_json::Value::Object(stderr_schema),
+        );
 
         McpToolSchema {
             name: tool.full_name.clone(),
@@ -155,7 +219,8 @@ impl ToolRegistry {
                     field: "timeout".to_string(),
                     value: timeout_val,
                     max: tool.timeout_max,
-                }.into());
+                }
+                .into());
             }
         }
 
@@ -165,7 +230,8 @@ impl ToolRegistry {
                     field: "stop_after".to_string(),
                     value: stop_after_val,
                     max: tool.stop_after_max,
-                }.into());
+                }
+                .into());
             }
         }
 
@@ -175,7 +241,8 @@ impl ToolRegistry {
                     field: "output_head_lines".to_string(),
                     value: head_lines,
                     max: tool.output_head_lines_max,
-                }.into());
+                }
+                .into());
             }
         }
 
@@ -185,7 +252,8 @@ impl ToolRegistry {
                     field: "output_tail_lines".to_string(),
                     value: tail_lines,
                     max: tool.output_tail_lines_max,
-                }.into());
+                }
+                .into());
             }
         }
 
@@ -195,7 +263,8 @@ impl ToolRegistry {
                     field: "stderr_lines".to_string(),
                     value: stderr_lines_val,
                     max: tool.stderr_lines_max,
-                }.into());
+                }
+                .into());
             }
         }
 
@@ -264,7 +333,7 @@ default_output_head_lines_max = 1000
         let registry = ToolRegistry::from_config(&config).unwrap();
         let tool = registry.get_tool("test_group_test_tool").unwrap();
         let schema = registry.generate_tool_schema(tool);
-        
+
         assert_eq!(schema.name, "test_group_test_tool");
         assert!(schema.description.contains("A test tool"));
         assert!(schema.input_schema.get("type").unwrap().as_str().unwrap() == "object");
@@ -276,12 +345,22 @@ default_output_head_lines_max = 1000
         let registry = ToolRegistry::from_config(&config).unwrap();
         let tool = registry.get_tool("test_group_test_tool").unwrap();
         let schema = registry.generate_tool_schema(tool);
-        
-        let properties = schema.input_schema.get("properties").unwrap().as_object().unwrap();
+
+        let properties = schema
+            .input_schema
+            .get("properties")
+            .unwrap()
+            .as_object()
+            .unwrap();
         assert!(properties.contains_key("arg1"));
         assert!(properties.contains_key("arg2"));
-        
-        let required = schema.input_schema.get("required").unwrap().as_array().unwrap();
+
+        let required = schema
+            .input_schema
+            .get("required")
+            .unwrap()
+            .as_array()
+            .unwrap();
         assert!(required.iter().any(|v| v.as_str().unwrap() == "arg1"));
         assert!(!required.iter().any(|v| v.as_str().unwrap() == "arg2"));
     }
@@ -292,8 +371,13 @@ default_output_head_lines_max = 1000
         let registry = ToolRegistry::from_config(&config).unwrap();
         let tool = registry.get_tool("test_group_test_tool").unwrap();
         let schema = registry.generate_tool_schema(tool);
-        
-        let properties = schema.input_schema.get("properties").unwrap().as_object().unwrap();
+
+        let properties = schema
+            .input_schema
+            .get("properties")
+            .unwrap()
+            .as_object()
+            .unwrap();
         assert!(properties.contains_key("timeout"));
         assert!(properties.contains_key("stop_after"));
         assert!(properties.contains_key("output_head_lines"));
@@ -306,16 +390,18 @@ default_output_head_lines_max = 1000
         let config = create_test_config();
         let registry = ToolRegistry::from_config(&config).unwrap();
         let tool = registry.get_tool("test_group_test_tool").unwrap();
-        
+
         // Valid overrides (within MAX)
-        assert!(registry.validate_runtime_overrides(
-            tool,
-            Some(100),  // timeout < 300 (max)
-            None,
-            Some(500),  // output_head_lines < 1000 (max)
-            None,
-            None,
-        ).is_ok());
+        assert!(registry
+            .validate_runtime_overrides(
+                tool,
+                Some(100), // timeout < 300 (max)
+                None,
+                Some(500), // output_head_lines < 1000 (max)
+                None,
+                None,
+            )
+            .is_ok());
     }
 
     #[test]
@@ -323,20 +409,25 @@ default_output_head_lines_max = 1000
         let config = create_test_config();
         let registry = ToolRegistry::from_config(&config).unwrap();
         let tool = registry.get_tool("test_group_test_tool").unwrap();
-        
+
         // Invalid override (exceeds MAX)
         let result = registry.validate_runtime_overrides(
             tool,
-            Some(500),  // timeout > 300 (max)
+            Some(500), // timeout > 300 (max)
             None,
             None,
             None,
             None,
         );
         assert!(result.is_err());
-        
+
         if let Err(e) = result {
-            if let crate::error::GenMcpError::Mcp(crate::error::McpError::OverrideExceedsMax { field, value, max }) = e {
+            if let crate::error::GenMcpError::Mcp(crate::error::McpError::OverrideExceedsMax {
+                field,
+                value,
+                max,
+            }) = e
+            {
                 assert_eq!(field, "timeout");
                 assert_eq!(value, 500);
                 assert_eq!(max, 300);
@@ -351,16 +442,11 @@ default_output_head_lines_max = 1000
         let config = create_test_config();
         let registry = ToolRegistry::from_config(&config).unwrap();
         let tool = registry.get_tool("test_group_test_tool").unwrap();
-        
+
         // No overrides (all None)
-        assert!(registry.validate_runtime_overrides(
-            tool,
-            None,
-            None,
-            None,
-            None,
-            None,
-        ).is_ok());
+        assert!(registry
+            .validate_runtime_overrides(tool, None, None, None, None, None,)
+            .is_ok());
     }
 
     #[test]
@@ -380,7 +466,7 @@ default_output_head_lines_max = 1000
 "#;
         let config = Config::from_str(toml).unwrap();
         let registry = ToolRegistry::from_config(&config).unwrap();
-        
+
         let tools: Vec<_> = registry.all_tools().collect();
         assert_eq!(tools.len(), 2);
     }

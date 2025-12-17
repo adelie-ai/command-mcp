@@ -22,11 +22,11 @@ secret = "change-me-to-a-secure-random-secret-in-production"
 [groups.just]
 # Timeout settings
 default_timeout = 30
-default_timeout_max = 600  # 10 minutes max for long builds
+default_timeout_max = 600 # 10 minutes max for long builds
 
 # Stop after (for long-running processes like watch/serve)
-default_stop_after = 0  # Disabled by default
-default_stop_after_max = 3600  # 1 hour max
+default_stop_after = 0        # Disabled by default
+default_stop_after_max = 3600 # 1 hour max
 
 # Termination
 default_termination_signal = "SIGTERM"
@@ -40,57 +40,60 @@ default_output_tail_lines_max = 2000
 default_stderr_lines = 100
 default_stderr_lines_max = 1000
 
-  # Main just command - run any target
-  [[groups.just.tools]]
-  name = "run"
-  description = "Execute a justfile target. The target name and any arguments are passed directly to just."
-  command = "/usr/bin/just"
-  
-    [groups.just.tools.parameters.args]
-    description = "Full just command line: target name and arguments, space-separated. Example: 'build --release' or 'test --verbose'"
-    example = "build --release"
-    required = true
+# Main just command - run any target
+[[groups.just.tools]]
+name = "run"
+description = "Execute a justfile target. The target name and any arguments are passed directly to just."
+command = "/usr/bin/just"
 
-  # List targets
-  [[groups.just.tools]]
-  name = "list"
-  description = "List all available justfile targets"
-  command = "/usr/bin/just"
-  timeout = 5  # Quick operation
-  
-    [groups.just.tools.parameters.format]
-    description = "Output format: 'list' for detailed list, empty for simple list"
-    example = "list"
-    required = false
+[groups.just.tools.parameters.args]
+description = "Full just command line: target name and arguments, space-separated. Example: 'build --release' or 'test --verbose'"
+example = "build --release"
+required = true
 
-  # Show target recipe
-  [[groups.just.tools]]
-  name = "show"
-  description = "Show the recipe for a specific target"
-  command = "/usr/bin/just"
-  timeout = 5
-  
-    [groups.just.tools.parameters.target]
-    description = "Target name to show"
-    example = "build"
-    required = true
+# List targets
+[[groups.just.tools]]
+name = "list"
+description = "List all available justfile targets"
+command = "/usr/bin/just"
+timeout = 5                                         # Quick operation
 
-  # Run in specific directory
-  [[groups.just.tools]]
-  name = "run_in_dir"
-  description = "Run a justfile target in a specific directory (uses just's --justfile or --working-directory)"
-  command = "/usr/bin/just"
-  timeout = 60
-  
-    [groups.just.tools.parameters.dir]
-    description = "Directory containing the justfile"
-    example = "/path/to/project"
-    required = true
-    
-    [groups.just.tools.parameters.args]
-    description = "Target name and arguments"
-    example = "build --release"
-    required = true
+[groups.just.tools.parameters.format]
+description = "Output format: 'list' for detailed list, empty for simple list"
+example = "list"
+required = false
+
+# Show target recipe
+[[groups.just.tools]]
+name = "show"
+description = "Show the recipe for a specific target"
+command = "/usr/bin/just"
+timeout = 5
+
+[groups.just.tools.parameters.target]
+description = "Target name to show"
+example = "build"
+required = true
+
+# Run in specific directory
+[[groups.just.tools]]
+name = "run_in_dir"
+description = "Run a justfile target in a specific directory (uses just's --justfile or --working-directory)"
+command = "/usr/bin/just"
+timeout = 60
+
+# Ensure dir is emitted before args
+arg_order = ["dir", "args"]
+
+[groups.just.tools.parameters.dir]
+description = "Directory containing the justfile"
+example = "/path/to/project"
+required = true
+
+[groups.just.tools.parameters.args]
+description = "Target name and arguments"
+example = "build --release"
+required = true
 
 # ============================================================================
 # Example: Development vs Production Configs
@@ -108,4 +111,3 @@ default_stderr_lines_max = 1000
 #   - Or override: genmcp serve --config just_with_auth.toml --mode websocket --jwt-secret "${JWT_SECRET}"
 #
 # ============================================================================
-

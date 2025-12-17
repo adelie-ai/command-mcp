@@ -12,15 +12,15 @@
 [groups.docker]
 # Default timeout for Docker commands (30 seconds)
 default_timeout = 30
-default_timeout_max = 600  # Allow up to 10 minutes for long-running operations
+default_timeout_max = 600 # Allow up to 10 minutes for long-running operations
 
 # Default stop_after: 0 means disabled (wait for normal completion)
 default_stop_after = 0
-default_stop_after_max = 3600  # Allow up to 1 hour for controlled duration
+default_stop_after_max = 3600 # Allow up to 1 hour for controlled duration
 
 # Termination settings
 default_termination_signal = "SIGTERM"
-default_termination_grace_period = 5  # 5 seconds grace period before SIGKILL
+default_termination_grace_period = 5   # 5 seconds grace period before SIGKILL
 
 # Output limits
 default_output_head_lines = 100
@@ -30,119 +30,118 @@ default_output_tail_lines_max = 1000
 default_stderr_lines = 50
 default_stderr_lines_max = 500
 
-  [[groups.docker.tools]]
-  name = "run"
-  description = "Run a Docker container. Pass docker run arguments in order: 'run' subcommand, then flags and values, then image name, then command. Example: 'run --name my-container -p 8080:80 -d nginx:latest'"
-  command = "/usr/bin/docker"
-  
-  # Tool-specific overrides (inherit from group defaults)
-  timeout = 60  # Docker run can take longer
-  timeout_max = 600
-  
-    [groups.docker.tools.run.parameters.args]
-    description = "Complete docker run command arguments. Include 'run' subcommand, all flags (--name, -p, -v, -e, -d, etc.), image name, and optional command. Example: 'run --name my-container -p 8080:80 -e NODE_ENV=prod -d nginx:latest' or 'run -p 8080:80 -v /host:/container nginx:latest nginx -g daemon off;'"
-    example = "run --name my-container -p 8080:80 -d nginx:latest"
-    required = true
+[[groups.docker.tools]]
+name = "run"
+description = "Run a Docker container. Pass docker run arguments in order: 'run' subcommand, then flags and values, then image name, then command. Example: 'run --name my-container -p 8080:80 -d nginx:latest'"
+command = "/usr/bin/docker"
 
-  [[groups.docker.tools]]
-  name = "ps"
-  description = "List Docker containers. Pass 'ps' subcommand and optional flags like '-a' for all containers, '--filter name=container' for filtering."
-  command = "/usr/bin/docker"
-  
-    [groups.docker.tools.ps.parameters.args]
-    description = "Docker ps arguments. Include 'ps' subcommand and optional flags. Example: 'ps' or 'ps -a' or 'ps --filter name=my-container'"
-    example = "ps -a"
-    required = true
+# Tool-specific overrides (inherit from group defaults)
+timeout = 60      # Docker run can take longer
+timeout_max = 600
 
-  [[groups.docker.tools]]
-  name = "stop"
-  description = "Stop one or more running Docker containers."
-  command = "/usr/bin/docker"
-  
-    [groups.docker.tools.stop.parameters.args]
-    description = "Docker stop arguments. Include 'stop' subcommand, optional '-t' timeout flag, and container name/ID. Example: 'stop my-container' or 'stop -t 10 my-container'"
-    example = "stop my-container"
-    required = true
+[groups.docker.tools.parameters.args]
+description = "Complete docker run command arguments. Include 'run' subcommand, all flags (--name, -p, -v, -e, -d, etc.), image name, and optional command. Example: 'run --name my-container -p 8080:80 -e NODE_ENV=prod -d nginx:latest' or 'run -p 8080:80 -v /host:/container nginx:latest nginx -g daemon off;'"
+example = "run --name my-container -p 8080:80 -d nginx:latest"
+required = true
 
-  [[groups.docker.tools]]
-  name = "rm"
-  description = "Remove one or more Docker containers."
-  command = "/usr/bin/docker"
-  
-    [groups.docker.tools.rm.parameters.args]
-    description = "Docker rm arguments. Include 'rm' subcommand, optional '-f' or '--force' flag, and container name/ID. Example: 'rm my-container' or 'rm -f my-container'"
-    example = "rm my-container"
-    required = true
+[[groups.docker.tools]]
+name = "ps"
+description = "List Docker containers. Pass 'ps' subcommand and optional flags like '-a' for all containers, '--filter name=container' for filtering."
+command = "/usr/bin/docker"
 
-  [[groups.docker.tools]]
-  name = "logs"
-  description = "Fetch logs from a Docker container. Use --follow or -f to follow logs (useful with stop_after runtime override)."
-  command = "/usr/bin/docker"
-  
-  # Override stop_after for logs with follow=true
-  stop_after = 0
-  stop_after_max = 3600  # Allow up to 1 hour for following logs
-  
-    [groups.docker.tools.logs.parameters.args]
-    description = "Docker logs arguments. Include 'logs' subcommand, optional flags like '-f' (follow), '--tail N' (last N lines), and container name/ID. Example: 'logs my-container' or 'logs -f --tail 100 my-container'"
-    example = "logs my-container"
-    required = true
+[groups.docker.tools.parameters.args]
+description = "Docker ps arguments. Include 'ps' subcommand and optional flags. Example: 'ps' or 'ps -a' or 'ps --filter name=my-container'"
+example = "ps -a"
+required = true
 
-  [[groups.docker.tools]]
-  name = "exec"
-  description = "Execute a command in a running Docker container."
-  command = "/usr/bin/docker"
-  
-    [groups.docker.tools.exec.parameters.args]
-    description = "Docker exec arguments. Include 'exec' subcommand, optional flags like '-i' (interactive), '-t' (tty), container name/ID, and command to execute. Example: 'exec my-container ls -la' or 'exec -it my-container /bin/bash'"
-    example = "exec my-container ls -la /app"
-    required = true
+[[groups.docker.tools]]
+name = "stop"
+description = "Stop one or more running Docker containers."
+command = "/usr/bin/docker"
 
-  [[groups.docker.tools]]
-  name = "inspect"
-  description = "Return low-level information about Docker objects (containers, images, etc.)."
-  command = "/usr/bin/docker"
-  
-    [groups.docker.tools.inspect.parameters.args]
-    description = "Docker inspect arguments. Include 'inspect' subcommand, optional '--format' flag with Go template, and container/image name/ID. Example: 'inspect my-container' or 'inspect --format {{.State.Status}} my-container'"
-    example = "inspect my-container"
-    required = true
+[groups.docker.tools.parameters.args]
+description = "Docker stop arguments. Include 'stop' subcommand, optional '-t' timeout flag, and container name/ID. Example: 'stop my-container' or 'stop -t 10 my-container'"
+example = "stop my-container"
+required = true
 
-  [[groups.docker.tools]]
-  name = "images"
-  description = "List Docker images."
-  command = "/usr/bin/docker"
-  
-    [groups.docker.tools.images.parameters.args]
-    description = "Docker images arguments. Include 'images' subcommand and optional flags like '-a' (all), '--filter' (filtering). Example: 'images' or 'images -a' or 'images --filter dangling=true'"
-    example = "images"
-    required = true
+[[groups.docker.tools]]
+name = "rm"
+description = "Remove one or more Docker containers."
+command = "/usr/bin/docker"
 
-  [[groups.docker.tools]]
-  name = "pull"
-  description = "Pull a Docker image from a registry."
-  command = "/usr/bin/docker"
-  
-  # Pulling images can take a while
-  timeout = 300  # 5 minutes default
-  timeout_max = 1800  # Allow up to 30 minutes for large images
-  
-    [groups.docker.tools.pull.parameters.args]
-    description = "Docker pull arguments. Include 'pull' subcommand and image name. Example: 'pull nginx:latest' or 'pull ubuntu:22.04'"
-    example = "pull nginx:latest"
-    required = true
+[groups.docker.tools.parameters.args]
+description = "Docker rm arguments. Include 'rm' subcommand, optional '-f' or '--force' flag, and container name/ID. Example: 'rm my-container' or 'rm -f my-container'"
+example = "rm my-container"
+required = true
 
-  [[groups.docker.tools]]
-  name = "build"
-  description = "Build a Docker image from a Dockerfile."
-  command = "/usr/bin/docker"
-  
-  # Building images can take a long time
-  timeout = 600  # 10 minutes default
-  timeout_max = 3600  # Allow up to 1 hour for complex builds
-  
-    [groups.docker.tools.build.parameters.args]
-    description = "Docker build arguments. Include 'build' subcommand, optional flags like '-t' (tag), '-f' (Dockerfile path), and build context path. Example: 'build -t myapp:latest .' or 'build -f Dockerfile.prod -t myapp:v1.0 ./myapp'"
-    example = "build -t myapp:latest ."
-    required = true
+[[groups.docker.tools]]
+name = "logs"
+description = "Fetch logs from a Docker container. Use --follow or -f to follow logs (useful with stop_after runtime override)."
+command = "/usr/bin/docker"
 
+# Override stop_after for logs with follow=true
+stop_after = 0
+stop_after_max = 3600 # Allow up to 1 hour for following logs
+
+[groups.docker.tools.parameters.args]
+description = "Docker logs arguments. Include 'logs' subcommand, optional flags like '-f' (follow), '--tail N' (last N lines), and container name/ID. Example: 'logs my-container' or 'logs -f --tail 100 my-container'"
+example = "logs my-container"
+required = true
+
+[[groups.docker.tools]]
+name = "exec"
+description = "Execute a command in a running Docker container."
+command = "/usr/bin/docker"
+
+[groups.docker.tools.parameters.args]
+description = "Docker exec arguments. Include 'exec' subcommand, optional flags like '-i' (interactive), '-t' (tty), container name/ID, and command to execute. Example: 'exec my-container ls -la' or 'exec -it my-container /bin/bash'"
+example = "exec my-container ls -la /app"
+required = true
+
+[[groups.docker.tools]]
+name = "inspect"
+description = "Return low-level information about Docker objects (containers, images, etc.)."
+command = "/usr/bin/docker"
+
+[groups.docker.tools.parameters.args]
+description = "Docker inspect arguments. Include 'inspect' subcommand, optional '--format' flag with Go template, and container/image name/ID. Example: 'inspect my-container' or 'inspect --format {{.State.Status}} my-container'"
+example = "inspect my-container"
+required = true
+
+[[groups.docker.tools]]
+name = "images"
+description = "List Docker images."
+command = "/usr/bin/docker"
+
+[groups.docker.tools.parameters.args]
+description = "Docker images arguments. Include 'images' subcommand and optional flags like '-a' (all), '--filter' (filtering). Example: 'images' or 'images -a' or 'images --filter dangling=true'"
+example = "images"
+required = true
+
+[[groups.docker.tools]]
+name = "pull"
+description = "Pull a Docker image from a registry."
+command = "/usr/bin/docker"
+
+# Pulling images can take a while
+timeout = 300      # 5 minutes default
+timeout_max = 1800 # Allow up to 30 minutes for large images
+
+[groups.docker.tools.parameters.args]
+description = "Docker pull arguments. Include 'pull' subcommand and image name. Example: 'pull nginx:latest' or 'pull ubuntu:22.04'"
+example = "pull nginx:latest"
+required = true
+
+[[groups.docker.tools]]
+name = "build"
+description = "Build a Docker image from a Dockerfile."
+command = "/usr/bin/docker"
+
+# Building images can take a long time
+timeout = 600      # 10 minutes default
+timeout_max = 3600 # Allow up to 1 hour for complex builds
+
+[groups.docker.tools.parameters.args]
+description = "Docker build arguments. Include 'build' subcommand, optional flags like '-t' (tag), '-f' (Dockerfile path), and build context path. Example: 'build -t myapp:latest .' or 'build -f Dockerfile.prod -t myapp:v1.0 ./myapp'"
+example = "build -t myapp:latest ."
+required = true

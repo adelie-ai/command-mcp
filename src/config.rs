@@ -48,6 +48,16 @@ pub struct Parameter {
     /// Example value
     #[serde(default)]
     pub example: Option<String>,
+    /// Optional CLI flag to emit for this parameter (e.g. "-r", "--recursive", "-n")
+    ///
+    /// If set:
+    /// - when `takes_value = false`, the flag is emitted when the provided value is "truthy" (e.g. true, "true")
+    /// - when `takes_value = true`, the flag is emitted followed by the parameter value
+    #[serde(default)]
+    pub flag: Option<String>,
+    /// Whether this flag takes a value (e.g. "-n 50"). Only meaningful when `flag` is set.
+    #[serde(default = "default_false")]
+    pub takes_value: bool,
     /// Whether the parameter is required
     #[serde(default = "default_false")]
     pub required: bool,
@@ -66,6 +76,12 @@ pub struct Tool {
     pub description: String,
     /// Command to execute
     pub command: String,
+    /// Optional explicit argument order for tool parameters.
+    ///
+    /// When present, arguments are built in this order first; any additional parameters
+    /// provided at runtime but not listed here will be appended deterministically.
+    #[serde(default)]
+    pub arg_order: Option<Vec<String>>,
     /// Timeout in seconds (optional, overrides group default)
     #[serde(default)]
     pub timeout: Option<u64>,
@@ -205,6 +221,8 @@ pub struct ResolvedTool {
     pub description: String,
     /// Command to execute
     pub command: String,
+    /// Deterministic argument order for building CLI args
+    pub arg_order: Vec<String>,
     /// Timeout in seconds
     pub timeout: u64,
     /// Maximum timeout in seconds
@@ -233,11 +251,68 @@ pub struct ResolvedTool {
     pub parameters: HashMap<String, Parameter>,
 }
 
+fn default_arg_order(parameters: &HashMap<String, Parameter>) -> Vec<String> {
+    // Heuristic ordering for common CLI conventions when arg_order is not provided.
+    // This avoids surprising behavior from HashMap iteration order.
+    let has = |k: &str| parameters.contains_key(k);
+
+    if has("source") && has("dest") {
+        let mut order = Vec::new();
+        if has("recursive") {
+            order.push("recursive".to_string());
+        }
+        order.push("source".to_string());
+        order.push("dest".to_string());
+        return order;
+    }
+
+    if has("pattern") && has("file") {
+        let mut order = Vec::new();
+        if has("recursive") {
+            order.push("recursive".to_string());
+        }
+        order.push("pattern".to_string());
+        order.push("file".to_string());
+        return order;
+    }
+
+    if has("pattern") && has("path") {
+        vec!["pattern".to_string(), "path".to_string()]
+    } else if has("script") && has("file") {
+        vec!["script".to_string(), "file".to_string()]
+    } else if has("program") && has("file") {
+        vec!["program".to_string(), "file".to_string()]
+    } else if has("follow") && (has("lines") || has("file")) {
+        let mut order = Vec::new();
+        if has("follow") {
+            order.push("follow".to_string());
+        }
+        if has("lines") {
+            order.push("lines".to_string());
+        }
+        if has("file") {
+            order.push("file".to_string());
+        }
+        order
+    } else if has("path") {
+        vec!["path".to_string()]
+    } else if has("file") {
+        // For tools like wc/tail when only file exists
+        vec!["file".to_string()]
+    } else {
+        // Deterministic fallback: sort keys.
+        let mut keys: Vec<String> = parameters.keys().cloned().collect();
+        keys.sort();
+        keys
+    }
+}
+
 impl Config {
     /// Load configuration from a TOML file
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let content = std::fs::read_to_string(path.as_ref())
-            .map_err(|e| ConfigError::FileNotFound(format!("{}: {}", path.as_ref().display(), e)))?;
+        let content = std::fs::read_to_string(path.as_ref()).map_err(|e| {
+            ConfigError::FileNotFound(format!("{}: {}", path.as_ref().display(), e))
+        })?;
         content.parse()
     }
 
@@ -253,7 +328,8 @@ impl Config {
         if let Some(ref auth) = self.websocket_auth {
             if auth.enabled {
                 // Must have either secret, oidc_issuer, or jwks_url
-                let has_auth_method = auth.secret.is_some() || auth.oidc_issuer.is_some() || auth.jwks_url.is_some();
+                let has_auth_method =
+                    auth.secret.is_some() || auth.oidc_issuer.is_some() || auth.jwks_url.is_some();
                 if !has_auth_method {
                     return Err(ConfigError::InvalidValue {
                         field: "websocket_auth".to_string(),
@@ -261,22 +337,27 @@ impl Config {
                     }.into());
                 }
                 // Can't have both secret and OIDC/JWKS
-                if auth.secret.is_some() && (auth.oidc_issuer.is_some() || auth.jwks_url.is_some()) {
+                if auth.secret.is_some() && (auth.oidc_issuer.is_some() || auth.jwks_url.is_some())
+                {
                     return Err(ConfigError::InvalidValue {
                         field: "websocket_auth".to_string(),
-                        message: "Cannot specify both 'secret' and OIDC/JWKS authentication methods".to_string(),
-                    }.into());
+                        message:
+                            "Cannot specify both 'secret' and OIDC/JWKS authentication methods"
+                                .to_string(),
+                    }
+                    .into());
                 }
                 // Can't have both oidc_issuer and jwks_url
                 if auth.oidc_issuer.is_some() && auth.jwks_url.is_some() {
                     return Err(ConfigError::InvalidValue {
                         field: "websocket_auth".to_string(),
                         message: "Cannot specify both 'oidc_issuer' and 'jwks_url'".to_string(),
-                    }.into());
+                    }
+                    .into());
                 }
             }
         }
-        
+
         let mut tool_names = std::collections::HashSet::new();
 
         for (group_name, group) in &mut self.groups {
@@ -313,7 +394,8 @@ impl Config {
 
             // Validate termination signal
             if let Some(ref signal_str) = group.default_termination_signal {
-                signal_str.parse::<TerminationSignal>()
+                signal_str
+                    .parse::<TerminationSignal>()
                     .map_err(|_| ConfigError::InvalidSignal(signal_str.clone()))?;
             }
 
@@ -334,7 +416,8 @@ impl Config {
                 }
 
                 if let Some(ref signal_str) = tool.termination_signal {
-                    signal_str.parse::<TerminationSignal>()
+                    signal_str
+                        .parse::<TerminationSignal>()
                         .map_err(|_| ConfigError::InvalidSignal(signal_str.clone()))?;
                 }
 
@@ -354,13 +437,19 @@ impl Config {
                 Self::validate_output_pair(
                     tool.output_head_lines,
                     tool.output_head_lines_max,
-                    &format!("groups.{}.tools[{}].output_head_lines", group_name, tool.name),
+                    &format!(
+                        "groups.{}.tools[{}].output_head_lines",
+                        group_name, tool.name
+                    ),
                 )?;
 
                 Self::validate_output_pair(
                     tool.output_tail_lines,
                     tool.output_tail_lines_max,
-                    &format!("groups.{}.tools[{}].output_tail_lines", group_name, tool.name),
+                    &format!(
+                        "groups.{}.tools[{}].output_tail_lines",
+                        group_name, tool.name
+                    ),
                 )?;
 
                 Self::validate_output_pair(
@@ -368,6 +457,39 @@ impl Config {
                     tool.stderr_lines_max,
                     &format!("groups.{}.tools[{}].stderr_lines", group_name, tool.name),
                 )?;
+
+                // Validate arg_order entries reference defined parameters
+                if let Some(ref arg_order) = tool.arg_order {
+                    for name in arg_order {
+                        if !tool.parameters.contains_key(name) {
+                            return Err(ConfigError::InvalidValue {
+                                field: format!(
+                                    "groups.{}.tools[{}].arg_order",
+                                    group_name, tool.name
+                                ),
+                                message: format!(
+                                    "arg_order references unknown parameter '{}'",
+                                    name
+                                ),
+                            }
+                            .into());
+                        }
+                    }
+                }
+
+                // Validate parameter flag metadata
+                for (param_name, param) in &tool.parameters {
+                    if param.takes_value && param.flag.is_none() {
+                        return Err(ConfigError::InvalidValue {
+                            field: format!(
+                                "groups.{}.tools[{}].parameters.{}.takes_value",
+                                group_name, tool.name, param_name
+                            ),
+                            message: "takes_value=true requires flag to be set".to_string(),
+                        }
+                        .into());
+                    }
+                }
             }
         }
 
@@ -386,7 +508,8 @@ impl Config {
                     field: field_name.to_string(),
                     default: default_val,
                     max: max_val,
-                }.into());
+                }
+                .into());
             }
         }
         Ok(())
@@ -404,7 +527,8 @@ impl Config {
                     field: field_name.to_string(),
                     default: default_val,
                     max: max_val,
-                }.into());
+                }
+                .into());
             }
         }
         Ok(())
@@ -412,7 +536,9 @@ impl Config {
 
     /// Resolve a tool configuration with all defaults applied
     pub fn resolve_tool(&self, group_name: &str, tool: &Tool) -> Result<ResolvedTool> {
-        let group = self.groups.get(group_name)
+        let group = self
+            .groups
+            .get(group_name)
             .ok_or_else(|| ConfigError::InvalidValue {
                 field: "group_name".to_string(),
                 message: format!("Group '{}' not found", group_name),
@@ -422,12 +548,19 @@ impl Config {
 
         // Resolve termination signal
         let default_signal = "SIGTERM".to_string();
-        let termination_signal_str = tool.termination_signal
+        let termination_signal_str = tool
+            .termination_signal
             .as_ref()
             .or(group.default_termination_signal.as_ref())
             .unwrap_or(&default_signal);
-        let termination_signal = termination_signal_str.parse::<TerminationSignal>()
+        let termination_signal = termination_signal_str
+            .parse::<TerminationSignal>()
             .map_err(|_| ConfigError::InvalidSignal(termination_signal_str.clone()))?;
+
+        let arg_order = tool
+            .arg_order
+            .clone()
+            .unwrap_or_else(|| default_arg_order(&tool.parameters));
 
         Ok(ResolvedTool {
             full_name,
@@ -435,26 +568,42 @@ impl Config {
             tool_name: tool.name.clone(),
             description: tool.description.clone(),
             command: tool.command.clone(),
+            arg_order,
             timeout: tool.timeout.unwrap_or(group.default_timeout.unwrap_or(30)),
-            timeout_max: tool.timeout_max.or(group.default_timeout_max).unwrap_or(300),
-            stop_after: tool.stop_after.unwrap_or(group.default_stop_after.unwrap_or(0)),
-            stop_after_max: tool.stop_after_max.or(group.default_stop_after_max).unwrap_or(3600),
+            timeout_max: tool
+                .timeout_max
+                .or(group.default_timeout_max)
+                .unwrap_or(300),
+            stop_after: tool
+                .stop_after
+                .unwrap_or(group.default_stop_after.unwrap_or(0)),
+            stop_after_max: tool
+                .stop_after_max
+                .or(group.default_stop_after_max)
+                .unwrap_or(3600),
             termination_signal,
-            termination_grace_period: tool.termination_grace_period
+            termination_grace_period: tool
+                .termination_grace_period
                 .unwrap_or(group.default_termination_grace_period.unwrap_or(5)),
-            output_head_lines: tool.output_head_lines
+            output_head_lines: tool
+                .output_head_lines
                 .unwrap_or(group.default_output_head_lines.unwrap_or(100)),
-            output_tail_lines: tool.output_tail_lines
+            output_tail_lines: tool
+                .output_tail_lines
                 .unwrap_or(group.default_output_tail_lines.unwrap_or(100)),
-            output_head_lines_max: tool.output_head_lines_max
+            output_head_lines_max: tool
+                .output_head_lines_max
                 .or(group.default_output_head_lines_max)
                 .unwrap_or(1000),
-            output_tail_lines_max: tool.output_tail_lines_max
+            output_tail_lines_max: tool
+                .output_tail_lines_max
                 .or(group.default_output_tail_lines_max)
                 .unwrap_or(1000),
-            stderr_lines: tool.stderr_lines
+            stderr_lines: tool
+                .stderr_lines
                 .unwrap_or(group.default_stderr_lines.unwrap_or(50)),
-            stderr_lines_max: tool.stderr_lines_max
+            stderr_lines_max: tool
+                .stderr_lines_max
                 .or(group.default_stderr_lines_max)
                 .unwrap_or(500),
             parameters: tool.parameters.clone(),
@@ -480,8 +629,7 @@ impl std::str::FromStr for Config {
 
     /// Parse configuration from TOML string
     fn from_str(content: &str) -> std::result::Result<Self, Self::Err> {
-        let config_toml: ConfigToml = toml::from_str(content)
-            .map_err(ConfigError::ParseToml)?;
+        let config_toml: ConfigToml = toml::from_str(content).map_err(ConfigError::ParseToml)?;
 
         let mut config = Config {
             groups: config_toml.groups,
@@ -531,6 +679,14 @@ default_timeout_max = 300
         // Should use defaults
         let tool = &group.tools[0];
         assert_eq!(tool.name, "test_tool");
+    }
+
+    #[test]
+    fn test_examples_config_toml_parses() {
+        let content = include_str!("../examples/config.toml");
+        let config = Config::from_str(content).unwrap();
+        assert!(config.groups.contains_key("file_operations"));
+        assert!(config.groups.contains_key("text_processing"));
     }
 
     #[test]
@@ -654,7 +810,7 @@ default_timeout = 60
         assert_eq!(config.groups.len(), 2);
         let tools = config.get_all_tools().unwrap();
         assert_eq!(tools.len(), 2);
-        
+
         // Order is not guaranteed, so check that both tools exist
         let tool_names: Vec<String> = tools.iter().map(|t| t.full_name.clone()).collect();
         assert!(tool_names.contains(&"group1_tool1".to_string()));
@@ -705,7 +861,10 @@ default_termination_signal = "SIGINT"
         let group = config.groups.get("test_group").unwrap();
         let tool = &group.tools[0];
         let resolved = config.resolve_tool("test_group", tool).unwrap();
-        assert_eq!(resolved.termination_signal, crate::config::TerminationSignal::Sigterm);
+        assert_eq!(
+            resolved.termination_signal,
+            crate::config::TerminationSignal::Sigterm
+        );
     }
 
     #[test]
@@ -729,12 +888,12 @@ default_output_head_lines = 100
 "#;
         let config = Config::from_str(toml).unwrap();
         let group = config.groups.get("test_group").unwrap();
-        
+
         let tool1 = &group.tools[0];
         let resolved1 = config.resolve_tool("test_group", tool1).unwrap();
         assert_eq!(resolved1.timeout, 30);
         assert_eq!(resolved1.output_head_lines, 100);
-        
+
         let tool2 = &group.tools[1];
         let resolved2 = config.resolve_tool("test_group", tool2).unwrap();
         assert_eq!(resolved2.timeout, 60);
@@ -848,7 +1007,10 @@ enabled = true
   command = "/bin/echo"
 "#;
         let err = Config::from_str(toml).unwrap_err();
-        assert!(matches!(err, crate::error::GenMcpError::Config(ConfigError::InvalidValue { .. })));
+        assert!(matches!(
+            err,
+            crate::error::GenMcpError::Config(ConfigError::InvalidValue { .. })
+        ));
     }
 
     #[test]
@@ -903,7 +1065,10 @@ jwks_url = "https://example.com/.well-known/jwks.json"
         assert!(config.websocket_auth.is_some());
         let auth = config.websocket_auth.as_ref().unwrap();
         assert!(auth.enabled);
-        assert_eq!(auth.jwks_url.as_ref().unwrap(), "https://example.com/.well-known/jwks.json");
+        assert_eq!(
+            auth.jwks_url.as_ref().unwrap(),
+            "https://example.com/.well-known/jwks.json"
+        );
         assert!(auth.secret.is_none());
     }
 

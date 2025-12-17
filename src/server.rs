@@ -54,7 +54,10 @@ impl McpServer {
         _client_capabilities: &Value,
     ) -> Result<Value> {
         // Validate protocol version
-        if protocol_version != "2024-11-05" && protocol_version != "2025-06-18" && protocol_version != "2025-11-25" {
+        if protocol_version != "2024-11-05"
+            && protocol_version != "2025-06-18"
+            && protocol_version != "2025-11-25"
+        {
             return Err(McpError::InvalidProtocolVersion(protocol_version.to_string()).into());
         }
 
@@ -101,55 +104,120 @@ impl McpServer {
         arguments: &Value,
     ) -> Result<ExecutionResult> {
         // Get tool from registry
-        let tool = self.tool_registry.get_tool(tool_name)
+        let tool = self
+            .tool_registry
+            .get_tool(tool_name)
             .ok_or_else(|| McpError::ToolNotFound(tool_name.to_string()))?;
 
         // Parse arguments
-        let args_map = arguments.as_object()
-            .ok_or_else(|| McpError::InvalidToolParameters("Arguments must be an object".to_string()))?;
+        let args_map = arguments.as_object().ok_or_else(|| {
+            McpError::InvalidToolParameters("Arguments must be an object".to_string())
+        })?;
 
-        // Extract tool-specific parameters
-        let mut tool_args = Vec::new();
-        for (param_name, param) in &tool.parameters {
-            if let Some(value) = args_map.get(param_name) {
-                if let Some(str_value) = value.as_str() {
-                    // Special handling for "args" parameter: split by spaces for commands like docker
-                    // This allows passing "run --name my-container nginx" as a single string
-                    if param_name == "args" && str_value.contains(' ') {
-                        // Split by spaces, but preserve quoted strings
-                        // Simple implementation: split by spaces, handle basic quoting
-                        let parts: Vec<&str> = str_value.split_whitespace().collect();
-                        for part in parts {
-                            // Remove surrounding quotes if present
-                            let cleaned = part.trim_matches('"').trim_matches('\'');
-                            if !cleaned.is_empty() {
-                                tool_args.push(cleaned.to_string());
-                            }
-                        }
-                    } else {
+        // Extract tool-specific parameters in deterministic, CLI-natural order.
+        // This avoids surprising behavior from HashMap iteration order.
+        let mut tool_args: Vec<String> = Vec::new();
+
+        let mut emit_param = |param_name: &str| -> Result<()> {
+            let param = tool.parameters.get(param_name).ok_or_else(|| {
+                McpError::InvalidToolParameters(format!(
+                    "Tool configuration error: arg_order references unknown parameter: {}",
+                    param_name
+                ))
+            })?;
+
+            let value = args_map.get(param_name);
+
+            if value.is_none() {
+                if param.required {
+                    return Err(McpError::InvalidToolParameters(format!(
+                        "Missing required parameter: {}",
+                        param_name
+                    ))
+                    .into());
+                }
+                return Ok(());
+            }
+
+            let value = value.unwrap();
+
+            // Flagged parameters
+            if let Some(flag) = &param.flag {
+                if param.takes_value {
+                    // Always emit flag + value when provided
+                    tool_args.push(flag.clone());
+                    if let Some(str_value) = value.as_str() {
                         tool_args.push(str_value.to_string());
+                    } else {
+                        tool_args.push(value.to_string());
+                    }
+                    return Ok(());
+                }
+
+                // Flag-only: emit when "truthy"
+                let truthy = match value {
+                    Value::Bool(b) => *b,
+                    Value::Number(n) => n.as_i64().unwrap_or(0) != 0,
+                    Value::String(s) => {
+                        let s = s.trim().to_ascii_lowercase();
+                        !(s.is_empty() || s == "false" || s == "0" || s == "no" || s == "off")
+                    }
+                    _ => true,
+                };
+
+                if truthy {
+                    tool_args.push(flag.clone());
+                }
+
+                return Ok(());
+            }
+
+            // Positional parameters
+            if let Some(str_value) = value.as_str() {
+                // Special handling for "args" parameter: split by spaces for commands like docker
+                if param_name == "args" && str_value.contains(' ') {
+                    let parts: Vec<&str> = str_value.split_whitespace().collect();
+                    for part in parts {
+                        let cleaned = part.trim_matches('"').trim_matches('\'');
+                        if !cleaned.is_empty() {
+                            tool_args.push(cleaned.to_string());
+                        }
                     }
                 } else {
-                    tool_args.push(value.to_string());
+                    tool_args.push(str_value.to_string());
                 }
-            } else if param.required {
-                return Err(McpError::InvalidToolParameters(
-                    format!("Missing required parameter: {}", param_name)
-                ).into());
+            } else {
+                tool_args.push(value.to_string());
             }
+
+            Ok(())
+        };
+
+        // Emit args in configured order first
+        let mut emitted = std::collections::HashSet::<String>::new();
+        for param_name in &tool.arg_order {
+            emitted.insert(param_name.clone());
+            emit_param(param_name)?;
+        }
+
+        // Back-compat: append any remaining parameters deterministically.
+        let mut remaining: Vec<String> = tool
+            .parameters
+            .keys()
+            .filter(|k| !emitted.contains(*k))
+            .cloned()
+            .collect();
+        remaining.sort();
+        for param_name in remaining {
+            emit_param(&param_name)?;
         }
 
         // Extract runtime overrides
-        let timeout = args_map.get("timeout")
-            .and_then(|v| v.as_u64());
-        let stop_after = args_map.get("stop_after")
-            .and_then(|v| v.as_u64());
-        let output_head_lines = args_map.get("output_head_lines")
-            .and_then(|v| v.as_u64());
-        let output_tail_lines = args_map.get("output_tail_lines")
-            .and_then(|v| v.as_u64());
-        let stderr_lines = args_map.get("stderr_lines")
-            .and_then(|v| v.as_u64());
+        let timeout = args_map.get("timeout").and_then(|v| v.as_u64());
+        let stop_after = args_map.get("stop_after").and_then(|v| v.as_u64());
+        let output_head_lines = args_map.get("output_head_lines").and_then(|v| v.as_u64());
+        let output_tail_lines = args_map.get("output_tail_lines").and_then(|v| v.as_u64());
+        let stderr_lines = args_map.get("stderr_lines").and_then(|v| v.as_u64());
 
         // Validate runtime overrides
         self.tool_registry.validate_runtime_overrides(
@@ -163,7 +231,11 @@ impl McpServer {
 
         // Use overrides or defaults
         let timeout_secs = timeout.unwrap_or(tool.timeout);
-        let stop_after_secs = stop_after.or(if tool.stop_after > 0 { Some(tool.stop_after) } else { None });
+        let stop_after_secs = stop_after.or(if tool.stop_after > 0 {
+            Some(tool.stop_after)
+        } else {
+            None
+        });
         let output_head = output_head_lines.unwrap_or(tool.output_head_lines);
         let output_tail = output_tail_lines.unwrap_or(tool.output_tail_lines);
         let stderr = stderr_lines.unwrap_or(tool.stderr_lines);
@@ -179,7 +251,8 @@ impl McpServer {
             output_head,
             output_tail,
             stderr,
-        ).await
+        )
+        .await
     }
 
     /// Handle shutdown request
@@ -243,45 +316,54 @@ default_timeout_max = 300
     async fn test_handle_initialize() {
         let config = create_test_config();
         let server = McpServer::new(config).unwrap();
-        
-        let capabilities = server.handle_initialize(
-            "2024-11-05",
-            &serde_json::json!({}),
-        ).await.unwrap();
-        
+
+        let capabilities = server
+            .handle_initialize("2024-11-05", &serde_json::json!({}))
+            .await
+            .unwrap();
+
         assert!(capabilities.get("protocolVersion").is_some());
         assert!(capabilities.get("serverInfo").is_some());
         assert!(capabilities.get("tools").is_some());
-        
+
         let tools = capabilities.get("tools").unwrap().as_array().unwrap();
         assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].get("name").unwrap().as_str().unwrap(), "test_group_echo");
+        assert_eq!(
+            tools[0].get("name").unwrap().as_str().unwrap(),
+            "test_group_echo"
+        );
     }
 
     #[tokio::test]
     async fn test_handle_initialize_2025_11_25() {
         let config = create_test_config();
         let server = McpServer::new(config).unwrap();
-        
-        let capabilities = server.handle_initialize(
-            "2025-11-25",
-            &serde_json::json!({}),
-        ).await.unwrap();
-        
+
+        let capabilities = server
+            .handle_initialize("2025-11-25", &serde_json::json!({}))
+            .await
+            .unwrap();
+
         assert!(capabilities.get("protocolVersion").is_some());
-        assert_eq!(capabilities.get("protocolVersion").unwrap().as_str().unwrap(), "2025-11-25");
+        assert_eq!(
+            capabilities
+                .get("protocolVersion")
+                .unwrap()
+                .as_str()
+                .unwrap(),
+            "2025-11-25"
+        );
     }
 
     #[tokio::test]
     async fn test_handle_initialize_invalid_version() {
         let config = create_test_config();
         let server = McpServer::new(config).unwrap();
-        
-        let result = server.handle_initialize(
-            "invalid-version",
-            &serde_json::json!({}),
-        ).await;
-        
+
+        let result = server
+            .handle_initialize("invalid-version", &serde_json::json!({}))
+            .await;
+
         assert!(result.is_err());
     }
 
@@ -289,7 +371,7 @@ default_timeout_max = 300
     async fn test_handle_initialized() {
         let config = create_test_config();
         let server = McpServer::new(config).unwrap();
-        
+
         assert!(!server.is_initialized().await);
         server.handle_initialized().await.unwrap();
         assert!(server.is_initialized().await);
@@ -299,10 +381,10 @@ default_timeout_max = 300
     async fn test_handle_shutdown() {
         let config = create_test_config();
         let server = McpServer::new(config).unwrap();
-        
+
         server.handle_initialized().await.unwrap();
         assert!(server.is_initialized().await);
-        
+
         server.handle_shutdown().await.unwrap();
         assert!(!server.is_initialized().await);
     }
@@ -311,14 +393,17 @@ default_timeout_max = 300
     async fn test_handle_tool_call_success() {
         let config = create_test_config();
         let server = McpServer::new(config).unwrap();
-        
-        let result = server.handle_tool_call(
-            "test_group_echo",
-            &serde_json::json!({
-                "text": "hello"
-            }),
-        ).await.unwrap();
-        
+
+        let result = server
+            .handle_tool_call(
+                "test_group_echo",
+                &serde_json::json!({
+                    "text": "hello"
+                }),
+            )
+            .await
+            .unwrap();
+
         assert_eq!(result.exit_code, 0);
         assert!(result.stdout.contains("hello"));
     }
@@ -327,12 +412,11 @@ default_timeout_max = 300
     async fn test_handle_tool_call_not_found() {
         let config = create_test_config();
         let server = McpServer::new(config).unwrap();
-        
-        let result = server.handle_tool_call(
-            "nonexistent_tool",
-            &serde_json::json!({}),
-        ).await;
-        
+
+        let result = server
+            .handle_tool_call("nonexistent_tool", &serde_json::json!({}))
+            .await;
+
         assert!(result.is_err());
         if let Err(e) = result {
             match e {
@@ -346,16 +430,17 @@ default_timeout_max = 300
     async fn test_handle_tool_call_missing_required_param() {
         let config = create_test_config();
         let server = McpServer::new(config).unwrap();
-        
-        let result = server.handle_tool_call(
-            "test_group_echo",
-            &serde_json::json!({}),
-        ).await;
-        
+
+        let result = server
+            .handle_tool_call("test_group_echo", &serde_json::json!({}))
+            .await;
+
         assert!(result.is_err());
         if let Err(e) = result {
             match e {
-                crate::error::GenMcpError::Mcp(crate::error::McpError::InvalidToolParameters(_)) => {}
+                crate::error::GenMcpError::Mcp(crate::error::McpError::InvalidToolParameters(
+                    _,
+                )) => {}
                 _ => panic!("Expected InvalidToolParameters error"),
             }
         }
@@ -365,19 +450,23 @@ default_timeout_max = 300
     async fn test_handle_tool_call_override_exceeds_max() {
         let config = create_test_config();
         let server = McpServer::new(config).unwrap();
-        
-        let result = server.handle_tool_call(
-            "test_group_echo",
-            &serde_json::json!({
-                "text": "hello",
-                "timeout": 500  // Exceeds max of 300
-            }),
-        ).await;
-        
+
+        let result = server
+            .handle_tool_call(
+                "test_group_echo",
+                &serde_json::json!({
+                    "text": "hello",
+                    "timeout": 500  // Exceeds max of 300
+                }),
+            )
+            .await;
+
         assert!(result.is_err());
         if let Err(e) = result {
             match e {
-                crate::error::GenMcpError::Mcp(crate::error::McpError::OverrideExceedsMax { .. }) => {}
+                crate::error::GenMcpError::Mcp(crate::error::McpError::OverrideExceedsMax {
+                    ..
+                }) => {}
                 _ => panic!("Expected OverrideExceedsMax error"),
             }
         }
@@ -387,16 +476,19 @@ default_timeout_max = 300
     async fn test_handle_tool_call_with_runtime_overrides() {
         let config = create_test_config();
         let server = McpServer::new(config).unwrap();
-        
-        let result = server.handle_tool_call(
-            "test_group_echo",
-            &serde_json::json!({
-                "text": "hello",
-                "timeout": 100,  // Within max
-                "output_head_lines": 50,
-            }),
-        ).await.unwrap();
-        
+
+        let result = server
+            .handle_tool_call(
+                "test_group_echo",
+                &serde_json::json!({
+                    "text": "hello",
+                    "timeout": 100,  // Within max
+                    "output_head_lines": 50,
+                }),
+            )
+            .await
+            .unwrap();
+
         assert_eq!(result.exit_code, 0);
         assert!(result.stdout.contains("hello"));
     }

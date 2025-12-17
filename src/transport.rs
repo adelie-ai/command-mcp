@@ -12,6 +12,12 @@ pub struct StdioTransportHandler {
     stdout: Stdout,
 }
 
+impl Default for StdioTransportHandler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StdioTransportHandler {
     /// Create a new STDIN/STDOUT transport handler
     pub fn new() -> Self {
