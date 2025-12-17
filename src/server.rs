@@ -54,7 +54,7 @@ impl McpServer {
         _client_capabilities: &Value,
     ) -> Result<Value> {
         // Validate protocol version
-        if protocol_version != "2024-11-05" && protocol_version != "2025-06-18" {
+        if protocol_version != "2024-11-05" && protocol_version != "2025-06-18" && protocol_version != "2025-11-25" {
             return Err(McpError::InvalidProtocolVersion(protocol_version.to_string()).into());
         }
 
@@ -242,6 +242,20 @@ default_timeout_max = 300
         let tools = capabilities.get("tools").unwrap().as_array().unwrap();
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].get("name").unwrap().as_str().unwrap(), "test_group_echo");
+    }
+
+    #[tokio::test]
+    async fn test_handle_initialize_2025_11_25() {
+        let config = create_test_config();
+        let server = McpServer::new(config).unwrap();
+        
+        let capabilities = server.handle_initialize(
+            "2025-11-25",
+            &serde_json::json!({}),
+        ).await.unwrap();
+        
+        assert!(capabilities.get("protocolVersion").is_some());
+        assert_eq!(capabilities.get("protocolVersion").unwrap().as_str().unwrap(), "2025-11-25");
     }
 
     #[tokio::test]

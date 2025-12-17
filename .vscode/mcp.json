@@ -1,0 +1,14 @@
+{
+	"servers": {
+		"genmcp-file-tools": {
+			"type": "stdio",
+			"command": "genmcp",
+			"args": [
+				"serve",
+				"-c",
+				"${workspaceFolder}/examples/config.toml"
+			]
+		}
+	},
+	"inputs": []
+}
