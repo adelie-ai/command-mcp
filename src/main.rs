@@ -62,10 +62,17 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Serve { config, mode, port, host, jwt_secret, oidc_issuer } => {
+        Commands::Serve {
+            config,
+            mode,
+            port,
+            host,
+            jwt_secret,
+            oidc_issuer,
+        } => {
             // Load configuration
             let config = Config::from_file(&config)?;
-            
+
             // Create server
             let server = genmcp::server::McpServer::new(config)?;
 
@@ -92,10 +99,10 @@ async fn main() -> Result<()> {
 
 async fn run_stdio_server(server: genmcp::server::McpServer) -> Result<()> {
     use genmcp::transport::StdioTransportHandler;
-    
+
     let server = Arc::new(server);
     let mut transport = StdioTransportHandler::new();
-    
+
     loop {
         // Read JSON-RPC message from stdin
         let message_str = match transport.read_message().await {
@@ -105,11 +112,11 @@ async fn run_stdio_server(server: genmcp::server::McpServer) -> Result<()> {
                 break;
             }
         };
-        
+
         if message_str.is_empty() {
             continue;
         }
-        
+
         // Parse JSON-RPC message
         let message: Value = match serde_json::from_str(&message_str) {
             Ok(msg) => msg,
@@ -123,10 +130,10 @@ async fn run_stdio_server(server: genmcp::server::McpServer) -> Result<()> {
                 continue;
             }
         };
-        
+
         // Handle message and get response
         let response = handle_jsonrpc_message(Arc::clone(&server), message).await;
-        
+
         // Send response if present (notifications don't have responses)
         if let Some(resp) = response {
             let resp_str = match serde_json::to_string(&resp) {
@@ -142,7 +149,7 @@ async fn run_stdio_server(server: genmcp::server::McpServer) -> Result<()> {
             }
         }
     }
-    
+
     Ok(())
 }
 
@@ -154,7 +161,7 @@ async fn run_websocket_server(
     oidc_issuer_override: Option<String>,
 ) -> Result<()> {
     let server = Arc::new(server);
-    
+
     // Get JWT config from CLI override or server (config file)
     let jwt_config = if let Some(issuer) = oidc_issuer_override {
         Some(genmcp::server::WebSocketAuth {
@@ -173,12 +180,15 @@ async fn run_websocket_server(
     } else {
         server.websocket_auth().cloned()
     };
-    
+
     // Initialize JWKS verifier if OIDC is configured
-    let jwks_verifier: Option<Arc<genmcp::oidc::JwksVerifier>> = if let Some(ref auth) = jwt_config {
+    let jwks_verifier: Option<Arc<genmcp::oidc::JwksVerifier>> = if let Some(ref auth) = jwt_config
+    {
         if auth.enabled {
             if let Some(ref issuer) = auth.oidc_issuer {
-                Some(Arc::new(genmcp::oidc::JwksVerifier::from_oidc_issuer(issuer).await?))
+                Some(Arc::new(
+                    genmcp::oidc::JwksVerifier::from_oidc_issuer(issuer).await?,
+                ))
             } else {
                 auth.jwks_url
                     .as_ref()
@@ -190,15 +200,15 @@ async fn run_websocket_server(
     } else {
         None
     };
-    
+
     let app = Router::new()
         .route("/ws", get(websocket_handler))
         .with_state((server, jwt_config, jwks_verifier));
-    
+
     let addr = format!("{}:{}", host, port);
     let listener = TcpListener::bind(&addr).await?;
     eprintln!("WebSocket server listening on {}", addr);
-    
+
     axum::serve(listener, app).await?;
     Ok(())
 }
@@ -220,14 +230,18 @@ async fn websocket_handler(
         if auth.enabled {
             if let Err(e) = validate_jwt_token(&headers, auth, jwks_verifier.as_deref()).await {
                 eprintln!("WebSocket authentication failed: {}", e);
-                return (StatusCode::UNAUTHORIZED, format!("Authentication failed: {}", e)).into_response();
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    format!("Authentication failed: {}", e),
+                )
+                    .into_response();
             }
         }
         // If auth is disabled, allow connection without authentication
     } else {
         // No auth config means authentication is disabled
     }
-    
+
     ws.on_upgrade(move |socket| handle_websocket_connection(socket, server))
 }
 
@@ -236,9 +250,9 @@ async fn handle_websocket_connection(
     server: Arc<genmcp::server::McpServer>,
 ) {
     use axum::extract::ws::Message;
-    
+
     let (mut sender, mut receiver) = socket.split();
-    
+
     while let Some(msg) = receiver.next().await {
         match msg {
             Ok(Message::Text(text)) => {
@@ -247,17 +261,18 @@ async fn handle_websocket_connection(
                     Ok(msg) => msg,
                     Err(e) => {
                         eprintln!("Error parsing JSON-RPC message: {}", e);
-                        let error_response = jsonrpc_error_response(None, -32700, "Parse error", None);
+                        let error_response =
+                            jsonrpc_error_response(None, -32700, "Parse error", None);
                         if let Ok(resp_str) = serde_json::to_string(&error_response) {
-                                    let _ = sender.send(Message::Text(resp_str.into())).await;
+                            let _ = sender.send(Message::Text(resp_str.into())).await;
                         }
                         continue;
                     }
                 };
-                
+
                 // Handle message and get response
                 let response = handle_jsonrpc_message(Arc::clone(&server), message).await;
-                
+
                 // Send response if present
                 if let Some(resp) = response {
                     if let Ok(resp_str) = serde_json::to_string(&resp) {
@@ -286,32 +301,37 @@ async fn validate_jwt_token(
     jwks_verifier: Option<&genmcp::oidc::JwksVerifier>,
 ) -> Result<()> {
     use genmcp::error::TransportError;
-    
+
     // Extract Bearer token from header
-    let auth_header = headers.get("authorization")
+    let auth_header = headers
+        .get("authorization")
         .ok_or_else(|| TransportError::Authentication("Missing Authorization header".to_string()))?
         .to_str()
         .map_err(|_| TransportError::Authentication("Invalid Authorization header".to_string()))?;
-    
+
     if !auth_header.starts_with("Bearer ") {
-        return Err(TransportError::Authentication("Invalid Authorization header format".to_string()).into());
+        return Err(TransportError::Authentication(
+            "Invalid Authorization header format".to_string(),
+        )
+        .into());
     }
-    
-    let token = auth_header.strip_prefix("Bearer ")
+
+    let token = auth_header
+        .strip_prefix("Bearer ")
         .ok_or_else(|| TransportError::Authentication("Invalid Bearer token format".to_string()))?
         .to_string();
-    
+
     if token.is_empty() {
         return Err(TransportError::Authentication("Empty Bearer token".to_string()).into());
     }
-    
+
     // Use JWKS verifier if available (OIDC/JWKS mode)
     if let Some(verifier) = jwks_verifier {
         let _claims = verifier.verify(&token).await?;
         // Token is valid
         return Ok(());
     }
-    
+
     // Fall back to secret-based validation (legacy mode)
     if let Some(ref secret) = auth.secret {
         // Validate JWT token using secret
@@ -320,8 +340,9 @@ async fn validate_jwt_token(
             &token,
             &jsonwebtoken::DecodingKey::from_secret(secret.as_ref()),
             &validation,
-        ).map_err(|e| TransportError::Authentication(format!("JWT validation failed: {}", e)))?;
-        
+        )
+        .map_err(|e| TransportError::Authentication(format!("JWT validation failed: {}", e)))?;
+
         // Token is valid
         Ok(())
     } else {
@@ -338,28 +359,45 @@ async fn handle_jsonrpc_message(
     let id = message.get("id").cloned();
     let method = message.get("method").and_then(|m| m.as_str());
     let params = message.get("params").cloned().unwrap_or(Value::Null);
-    
+
     // Check if this is a notification (no id) or request (has id)
     let is_notification = id.is_none();
-    
+
     // Handle different MCP methods
     let result = match method {
         Some("initialize") => {
-            let protocol_version = params.get("protocolVersion")
+            let protocol_version = params
+                .get("protocolVersion")
                 .and_then(|v| v.as_str())
                 .unwrap_or("2024-11-05");
             let client_capabilities = params.get("capabilities").unwrap_or(&Value::Null);
-            
-            match server.handle_initialize(protocol_version, client_capabilities).await {
+
+            match server
+                .handle_initialize(protocol_version, client_capabilities)
+                .await
+            {
                 Ok(capabilities) => Ok(capabilities),
                 Err(e) => Err(e),
             }
         }
-        Some("initialized") => {
+        Some("initialized") | Some("notifications/initialized") => {
             match server.handle_initialized().await {
                 Ok(_) => Ok(Value::Null),
                 Err(e) => Err(e),
             }
+        }
+        Some("tools/list") => {
+            // Check if server is initialized
+            if !server.is_initialized().await {
+                return Some(jsonrpc_error_response(
+                    id,
+                    -32000,
+                    "Server not initialized. Call 'initialize' first.",
+                    None,
+                ));
+            }
+
+            Ok(serde_json::json!({ "tools": server.list_tools() }))
         }
         Some("tools/call") => {
             // Check if server is initialized
@@ -371,28 +409,29 @@ async fn handle_jsonrpc_message(
                     None,
                 ));
             }
-            
+
             let tool_name = params.get("name").and_then(|n| n.as_str());
             let arguments = params.get("arguments").unwrap_or(&Value::Null);
-            
+
             if let Some(name) = tool_name {
                 match server.handle_tool_call(name, arguments).await {
-                    Ok(exec_result) => {
-                        Ok(serde_json::json!({
-                            "content": [{
-                                "type": "text",
-                                "text": format!("Exit code: {}\nSTDOUT:\n{}\nSTDERR:\n{}", 
-                                    exec_result.exit_code, 
-                                    exec_result.stdout, 
-                                    exec_result.stderr)
-                            }],
-                            "isError": exec_result.exit_code != 0 && !exec_result.stopped_after,
-                        }))
-                    }
+                    Ok(exec_result) => Ok(serde_json::json!({
+                        "content": [{
+                            "type": "text",
+                            "text": format!("Exit code: {}\nSTDOUT:\n{}\nSTDERR:\n{}",
+                                exec_result.exit_code,
+                                exec_result.stdout,
+                                exec_result.stderr)
+                        }],
+                        "isError": exec_result.exit_code != 0 && !exec_result.stopped_after,
+                    })),
                     Err(e) => Err(e),
                 }
             } else {
-                Err(genmcp::error::McpError::InvalidToolParameters("Missing tool name".to_string()).into())
+                Err(
+                    genmcp::error::McpError::InvalidToolParameters("Missing tool name".to_string())
+                        .into(),
+                )
             }
         }
         Some("shutdown") => {
@@ -405,19 +444,19 @@ async fn handle_jsonrpc_message(
                     None,
                 ));
             }
-            
+
             match server.handle_shutdown().await {
                 Ok(_) => Ok(Value::Null),
                 Err(e) => Err(e),
             }
         }
-        Some(_) | None => {
-            Err(genmcp::error::McpError::InvalidJsonRpc(
-                format!("Unknown method: {:?}", method)
-            ).into())
-        }
+        Some(_) | None => Err(genmcp::error::McpError::InvalidJsonRpc(format!(
+            "Unknown method: {:?}",
+            method
+        ))
+        .into()),
     };
-    
+
     // Build response
     match result {
         Ok(result_value) => {
@@ -439,18 +478,18 @@ async fn handle_jsonrpc_message(
                 None
             } else {
                 // Build error response
-                Some(jsonrpc_error_response(
-                    id,
-                    -32000,
-                    &e.to_string(),
-                    None,
-                ))
+                Some(jsonrpc_error_response(id, -32000, &e.to_string(), None))
             }
         }
     }
 }
 
-fn jsonrpc_error_response(id: Option<Value>, code: i32, message: &str, data: Option<Value>) -> Value {
+fn jsonrpc_error_response(
+    id: Option<Value>,
+    code: i32,
+    message: &str,
+    data: Option<Value>,
+) -> Value {
     serde_json::json!({
         "jsonrpc": "2.0",
         "id": id,

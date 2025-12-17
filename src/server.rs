@@ -189,6 +189,20 @@ impl McpServer {
         Ok(())
     }
 
+    /// List tools in MCP schema format
+    pub fn list_tools(&self) -> Value {
+        let mut tools = Vec::new();
+        for tool in self.tool_registry.all_tools() {
+            let schema = self.tool_registry.generate_tool_schema(tool);
+            tools.push(serde_json::json!({
+                "name": schema.name,
+                "description": schema.description,
+                "inputSchema": schema.input_schema,
+            }));
+        }
+        serde_json::Value::Array(tools)
+    }
+
     /// Check if server is initialized
     pub async fn is_initialized(&self) -> bool {
         *self.initialized.read().await
