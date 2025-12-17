@@ -2,19 +2,47 @@
 # This shows different ways to configure JWT authentication for WebSocket mode
 
 # ============================================================================
-# OPTION 1: Enable JWT authentication with secret key
+# OPTION 1: Enable JWT authentication with OIDC issuer (RECOMMENDED)
 # ============================================================================
 [websocket_auth]
 enabled = true
-secret = "your-secret-key-here-change-in-production"
+oidc_issuer = "https://your-oidc-provider.com"
+
+# When enabled=true and oidc_issuer is provided:
+# - WebSocket connections require Authorization: Bearer <token> header
+# - OIDC discovery is performed to fetch JWKS endpoint
+# - JWT tokens are validated using JWKS keys from the OIDC provider
+# - Invalid or missing tokens result in HTTP 401 Unauthorized
+# - Keys are automatically cached and refreshed
+
+# ============================================================================
+# OPTION 2: Enable JWT authentication with direct JWKS URL
+# ============================================================================
+# [websocket_auth]
+# enabled = true
+# jwks_url = "https://your-oidc-provider.com/.well-known/jwks.json"
+
+# When enabled=true and jwks_url is provided:
+# - WebSocket connections require Authorization: Bearer <token> header
+# - JWT tokens are validated using JWKS keys from the specified URL
+# - Skips OIDC discovery (useful if you know the JWKS URL directly)
+# - Keys are automatically cached and refreshed
+
+# ============================================================================
+# OPTION 3: Enable JWT authentication with secret key (LEGACY)
+# ============================================================================
+# [websocket_auth]
+# enabled = true
+# secret = "your-secret-key-here-change-in-production"
 
 # When enabled=true and secret is provided:
 # - WebSocket connections require Authorization: Bearer <token> header
-# - JWT tokens are validated using the secret key
+# - JWT tokens are validated using the secret key (HS256 algorithm)
 # - Invalid or missing tokens result in HTTP 401 Unauthorized
+# - Note: This is legacy mode. Prefer OIDC/JWKS for production use.
 
 # ============================================================================
-# OPTION 2: Disable authentication (allow all connections)
+# OPTION 4: Disable authentication (allow all connections)
 # ============================================================================
 # [websocket_auth]
 # enabled = false
@@ -25,7 +53,7 @@ secret = "your-secret-key-here-change-in-production"
 # - Useful for development or trusted networks
 
 # ============================================================================
-# OPTION 3: Omit websocket_auth section entirely
+# OPTION 5: Omit websocket_auth section entirely
 # ============================================================================
 # If you don't include [websocket_auth] at all:
 # - Authentication is disabled by default
@@ -35,9 +63,10 @@ secret = "your-secret-key-here-change-in-production"
 # ============================================================================
 # CLI Override
 # ============================================================================
-# The --jwt-secret CLI option takes precedence over config file:
+# CLI options take precedence over config file:
+#   genmcp serve --config config.toml --mode websocket --oidc-issuer "https://provider.com"
 #   genmcp serve --config config.toml --mode websocket --jwt-secret "cli-secret"
-# This will override the secret in the config file.
+# The --oidc-issuer option is preferred over --jwt-secret.
 
 # ============================================================================
 # Example tool groups (same as other configs)

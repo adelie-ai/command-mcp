@@ -9,4 +9,5 @@ pub mod tools;
 pub mod server;
 pub mod transport;
 pub mod config_schema;
+pub mod oidc;
 

@@ -42,9 +42,12 @@ enum Commands {
         /// Host for WebSocket mode
         #[arg(long, default_value = "0.0.0.0")]
         host: String,
-        /// JWT secret for WebSocket authentication (optional)
+        /// JWT secret for WebSocket authentication (legacy, optional)
         #[arg(long)]
         jwt_secret: Option<String>,
+        /// OIDC issuer URL for JWT validation via JWKS (preferred over jwt-secret)
+        #[arg(long)]
+        oidc_issuer: Option<String>,
     },
     /// Output configuration file schema
     Schema {
@@ -59,7 +62,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Serve { config, mode, port, host, jwt_secret } => {
+        Commands::Serve { config, mode, port, host, jwt_secret, oidc_issuer } => {
             // Load configuration
             let config = Config::from_file(&config)?;
             
@@ -71,7 +74,7 @@ async fn main() -> Result<()> {
                     run_stdio_server(server).await?;
                 }
                 "websocket" => {
-                    run_websocket_server(server, &host, port, jwt_secret).await?;
+                    run_websocket_server(server, &host, port, jwt_secret, oidc_issuer).await?;
                 }
                 _ => {
                     eprintln!("Invalid mode: {}. Must be 'stdio' or 'websocket'", mode);
@@ -148,20 +151,49 @@ async fn run_websocket_server(
     host: &str,
     port: u16,
     jwt_secret_override: Option<String>,
+    oidc_issuer_override: Option<String>,
 ) -> Result<()> {
     let server = Arc::new(server);
     
-    // Get JWT config from server (config file) or CLI override
-    let jwt_config = jwt_secret_override
-        .map(|secret| genmcp::server::WebSocketAuth {
+    // Get JWT config from CLI override or server (config file)
+    let jwt_config = if let Some(issuer) = oidc_issuer_override {
+        Some(genmcp::server::WebSocketAuth {
+            enabled: true,
+            secret: None,
+            oidc_issuer: Some(issuer),
+            jwks_url: None,
+        })
+    } else if let Some(secret) = jwt_secret_override {
+        Some(genmcp::server::WebSocketAuth {
             enabled: true,
             secret: Some(secret),
+            oidc_issuer: None,
+            jwks_url: None,
         })
-        .or_else(|| server.websocket_auth().cloned());
+    } else {
+        server.websocket_auth().cloned()
+    };
+    
+    // Initialize JWKS verifier if OIDC is configured
+    let jwks_verifier: Option<Arc<genmcp::oidc::JwksVerifier>> = if let Some(ref auth) = jwt_config {
+        if auth.enabled {
+            if let Some(ref issuer) = auth.oidc_issuer {
+                Some(Arc::new(genmcp::oidc::JwksVerifier::from_oidc_issuer(issuer).await?))
+            } else {
+                auth.jwks_url
+                    .as_ref()
+                    .map(|jwks_url| Arc::new(genmcp::oidc::JwksVerifier::from_jwks_url(jwks_url)))
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
     
     let app = Router::new()
         .route("/ws", get(websocket_handler))
-        .with_state((server, jwt_config));
+        .with_state((server, jwt_config, jwks_verifier));
     
     let addr = format!("{}:{}", host, port);
     let listener = TcpListener::bind(&addr).await?;
@@ -171,15 +203,22 @@ async fn run_websocket_server(
     Ok(())
 }
 
+// Type alias for WebSocket handler state
+type WebSocketState = (
+    Arc<genmcp::server::McpServer>,
+    Option<genmcp::server::WebSocketAuth>,
+    Option<Arc<genmcp::oidc::JwksVerifier>>,
+);
+
 async fn websocket_handler(
     ws: WebSocketUpgrade,
     headers: HeaderMap,
-    State((server, jwt_config)): State<(Arc<genmcp::server::McpServer>, Option<genmcp::server::WebSocketAuth>)>,
+    State((server, jwt_config, jwks_verifier)): State<WebSocketState>,
 ) -> Response {
     // Authenticate WebSocket connection if enabled
     if let Some(ref auth) = jwt_config {
         if auth.enabled {
-            if let Err(e) = validate_jwt_token(&headers, auth) {
+            if let Err(e) = validate_jwt_token(&headers, auth, jwks_verifier.as_deref()).await {
                 eprintln!("WebSocket authentication failed: {}", e);
                 return (StatusCode::UNAUTHORIZED, format!("Authentication failed: {}", e)).into_response();
             }
@@ -241,7 +280,11 @@ async fn handle_websocket_connection(
     }
 }
 
-fn validate_jwt_token(headers: &HeaderMap, auth: &genmcp::server::WebSocketAuth) -> Result<()> {
+async fn validate_jwt_token(
+    headers: &HeaderMap,
+    auth: &genmcp::server::WebSocketAuth,
+    jwks_verifier: Option<&genmcp::oidc::JwksVerifier>,
+) -> Result<()> {
     use genmcp::error::TransportError;
     
     // Extract Bearer token from header
@@ -262,9 +305,16 @@ fn validate_jwt_token(headers: &HeaderMap, auth: &genmcp::server::WebSocketAuth)
         return Err(TransportError::Authentication("Empty Bearer token".to_string()).into());
     }
     
-    // If secret is provided, validate JWT; otherwise just check token exists (stub mode)
+    // Use JWKS verifier if available (OIDC/JWKS mode)
+    if let Some(verifier) = jwks_verifier {
+        let _claims = verifier.verify(&token).await?;
+        // Token is valid
+        return Ok(());
+    }
+    
+    // Fall back to secret-based validation (legacy mode)
     if let Some(ref secret) = auth.secret {
-        // Validate JWT token
+        // Validate JWT token using secret
         let validation = jsonwebtoken::Validation::default();
         let _decoded = jsonwebtoken::decode::<serde_json::Value>(
             &token,

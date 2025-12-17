@@ -168,9 +168,15 @@ pub struct WebSocketAuth {
     /// Enable JWT authentication (default: true)
     #[serde(default = "default_auth_enabled")]
     pub enabled: bool,
-    /// JWT secret key for token validation (required if enabled)
+    /// JWT secret key for token validation (legacy, use oidc_issuer instead)
     #[serde(default)]
     pub secret: Option<String>,
+    /// OIDC issuer URL for JWT validation via JWKS (preferred over secret)
+    #[serde(default)]
+    pub oidc_issuer: Option<String>,
+    /// Direct JWKS URL (alternative to oidc_issuer, skips discovery)
+    #[serde(default)]
+    pub jwks_url: Option<String>,
 }
 
 fn default_auth_enabled() -> bool {
@@ -245,11 +251,29 @@ impl Config {
     fn validate(&mut self) -> Result<()> {
         // Validate WebSocket auth configuration
         if let Some(ref auth) = self.websocket_auth {
-            if auth.enabled && auth.secret.is_none() {
-                return Err(ConfigError::InvalidValue {
-                    field: "websocket_auth.secret".to_string(),
-                    message: "JWT secret is required when authentication is enabled".to_string(),
-                }.into());
+            if auth.enabled {
+                // Must have either secret, oidc_issuer, or jwks_url
+                let has_auth_method = auth.secret.is_some() || auth.oidc_issuer.is_some() || auth.jwks_url.is_some();
+                if !has_auth_method {
+                    return Err(ConfigError::InvalidValue {
+                        field: "websocket_auth".to_string(),
+                        message: "One of 'secret', 'oidc_issuer', or 'jwks_url' is required when authentication is enabled".to_string(),
+                    }.into());
+                }
+                // Can't have both secret and OIDC/JWKS
+                if auth.secret.is_some() && (auth.oidc_issuer.is_some() || auth.jwks_url.is_some()) {
+                    return Err(ConfigError::InvalidValue {
+                        field: "websocket_auth".to_string(),
+                        message: "Cannot specify both 'secret' and OIDC/JWKS authentication methods".to_string(),
+                    }.into());
+                }
+                // Can't have both oidc_issuer and jwks_url
+                if auth.oidc_issuer.is_some() && auth.jwks_url.is_some() {
+                    return Err(ConfigError::InvalidValue {
+                        field: "websocket_auth".to_string(),
+                        message: "Cannot specify both 'oidc_issuer' and 'jwks_url'".to_string(),
+                    }.into());
+                }
             }
         }
         
@@ -839,5 +863,99 @@ enabled = true
         let config = Config::from_str(toml).unwrap();
         // websocket_auth should be None when omitted
         assert!(config.websocket_auth.is_none());
+    }
+
+    #[test]
+    fn test_websocket_auth_config_oidc_issuer() {
+        let toml = r#"
+[websocket_auth]
+enabled = true
+oidc_issuer = "https://example.com"
+
+[groups.test_group]
+  [[groups.test_group.tools]]
+  name = "test_tool"
+  description = "A test tool"
+  command = "/bin/echo"
+"#;
+        let config = Config::from_str(toml).unwrap();
+        assert!(config.websocket_auth.is_some());
+        let auth = config.websocket_auth.as_ref().unwrap();
+        assert!(auth.enabled);
+        assert_eq!(auth.oidc_issuer.as_ref().unwrap(), "https://example.com");
+        assert!(auth.secret.is_none());
+    }
+
+    #[test]
+    fn test_websocket_auth_config_jwks_url() {
+        let toml = r#"
+[websocket_auth]
+enabled = true
+jwks_url = "https://example.com/.well-known/jwks.json"
+
+[groups.test_group]
+  [[groups.test_group.tools]]
+  name = "test_tool"
+  description = "A test tool"
+  command = "/bin/echo"
+"#;
+        let config = Config::from_str(toml).unwrap();
+        assert!(config.websocket_auth.is_some());
+        let auth = config.websocket_auth.as_ref().unwrap();
+        assert!(auth.enabled);
+        assert_eq!(auth.jwks_url.as_ref().unwrap(), "https://example.com/.well-known/jwks.json");
+        assert!(auth.secret.is_none());
+    }
+
+    #[test]
+    fn test_websocket_auth_config_both_secret_and_oidc() {
+        let toml = r#"
+[websocket_auth]
+enabled = true
+secret = "secret"
+oidc_issuer = "https://example.com"
+
+[groups.test_group]
+  [[groups.test_group.tools]]
+  name = "test_tool"
+  description = "A test tool"
+  command = "/bin/echo"
+"#;
+        // Should fail validation - can't have both secret and OIDC
+        assert!(Config::from_str(toml).is_err());
+    }
+
+    #[test]
+    fn test_websocket_auth_config_both_oidc_issuer_and_jwks_url() {
+        let toml = r#"
+[websocket_auth]
+enabled = true
+oidc_issuer = "https://example.com"
+jwks_url = "https://example.com/.well-known/jwks.json"
+
+[groups.test_group]
+  [[groups.test_group.tools]]
+  name = "test_tool"
+  description = "A test tool"
+  command = "/bin/echo"
+"#;
+        // Should fail validation - can't have both oidc_issuer and jwks_url
+        assert!(Config::from_str(toml).is_err());
+    }
+
+    #[test]
+    fn test_websocket_auth_config_enabled_no_auth_method() {
+        let toml = r#"
+[websocket_auth]
+enabled = true
+
+[groups.test_group]
+  [[groups.test_group.tools]]
+  name = "test_tool"
+  description = "A test tool"
+  command = "/bin/echo"
+"#;
+        // Should fail validation - enabled but no auth method specified
+        assert!(Config::from_str(toml).is_err());
     }
 }

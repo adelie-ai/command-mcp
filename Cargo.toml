@@ -10,7 +10,9 @@ axum-extra = "0.12.2"
 clap = { version = "4.5.53", features = ["derive"] }
 futures-util = "0.3.31"
 jsonwebtoken = "10.2.0"
+jwtk = "0.4"
 nix = { version = "0.30.1", features = ["process", "signal"] }
+reqwest = { version = "0.12", features = ["json"] }
 rust-mcp-schema = "0.9.1"
 rust-mcp-sdk = "0.7.4"
 rust-mcp-transport = "0.6.3"
@@ -22,6 +24,7 @@ tokio = { version = "1.48.0", features = ["full"] }
 tokio-test = "0.4"
 toml = "0.9.8"
 tower-http = "0.6.8"
+url = "2.5"
 
 [lints.rust]
 warnings = "deny"
