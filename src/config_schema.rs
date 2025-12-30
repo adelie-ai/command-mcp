@@ -4,6 +4,7 @@
 // Configuration schema generation for LLM assistance
 
 use crate::error::Result;
+use schemars::schema::{InstanceType, RootSchema, Schema, SchemaObject, SingleOrVec};
 use schemars::schema_for;
 use std::collections::HashMap;
 
@@ -90,8 +91,16 @@ fn build_generated_example() -> crate::config::ConfigToml {
     }
 }
 
-/// Output Markdown documentation for the configuration file format.
-pub fn output_docs() -> Result<()> {
+/// Output Markdown documentation generated from the Rust config structures (stays in sync).
+pub fn output_docs_generated() -> Result<()> {
+    let root = schema_for!(crate::config::ConfigToml);
+    let docs = render_markdown_docs_from_schema(&root);
+    println!("{docs}");
+    Ok(())
+}
+
+/// Output Markdown documentation for the configuration file format (hand-written).
+pub fn output_docs_curated() -> Result<()> {
     let docs = r#"# genmcp Configuration Schema
 
 ## Overview
@@ -156,6 +165,194 @@ Optional `[websocket_auth]` section for WebSocket mode:
     Ok(())
 }
 
+fn render_markdown_docs_from_schema(root: &RootSchema) -> String {
+    let mut out = String::new();
+
+    out.push_str("# genmcp Configuration (generated)\n\n");
+    out.push_str(
+        "This documentation is generated from the Rust configuration structs (field doc comments + schema), so it stays in sync with the running binary.\n\n",
+    );
+    out.push_str("## Quick commands\n\n");
+    out.push_str("- `genmcp config schema` (generated JSON Schema)\n");
+    out.push_str("- `genmcp config example` (curated example TOML)\n");
+    out.push_str(
+        "- `genmcp config example --generated` (struct-synced TOML example; no comments)\n",
+    );
+    out.push_str("- `genmcp config docs --curated` (hand-written docs)\n\n");
+
+    out.push_str("## Top-level keys\n\n");
+    if let Some(obj) = root.schema.object.as_ref() {
+        let required = &obj.required;
+        for (name, schema) in &obj.properties {
+            render_field(&mut out, root, name, schema, required.contains(name));
+        }
+    } else {
+        out.push_str("_Unexpected: root schema is not an object._\n");
+    }
+
+    out.push_str("\n## Definitions\n\n");
+    for def in ["Group", "Tool", "Parameter", "WebSocketAuth"] {
+        if let Some(schema) = root.definitions.get(def) {
+            out.push_str(&format!("### `{def}`\n\n"));
+            render_object_fields(&mut out, root, schema);
+            out.push('\n');
+        }
+    }
+
+    out
+}
+
+fn render_field(out: &mut String, root: &RootSchema, name: &str, schema: &Schema, required: bool) {
+    let (ty, desc, enum_vals) = describe_schema(root, schema);
+    let req = if required { "Required" } else { "Optional" };
+    out.push_str(&format!("- **`{name}`** ({req}, `{ty}`)"));
+    if let Some(d) = desc {
+        out.push_str(&format!(": {d}"));
+    }
+    out.push('\n');
+    if !enum_vals.is_empty() {
+        out.push_str("  - **Allowed values**: ");
+        for (i, v) in enum_vals.iter().enumerate() {
+            if i > 0 {
+                out.push_str(", ");
+            }
+            out.push_str(&format!("`{v}`"));
+        }
+        out.push('\n');
+    }
+}
+
+fn render_object_fields(out: &mut String, root: &RootSchema, schema: &Schema) {
+    let schema = deref_schema(root, schema);
+    let Schema::Object(obj) = schema else {
+        out.push_str("_Not an object schema._\n");
+        return;
+    };
+    let Some(o) = obj.object.as_ref() else {
+        out.push_str("_Not an object schema._\n");
+        return;
+    };
+
+    if o.properties.is_empty() {
+        out.push_str("_No fields._\n");
+        return;
+    }
+
+    for (name, field_schema) in &o.properties {
+        render_field(out, root, name, field_schema, o.required.contains(name));
+    }
+}
+
+fn describe_schema(root: &RootSchema, schema: &Schema) -> (String, Option<String>, Vec<String>) {
+    let schema = deref_schema(root, schema);
+    match schema {
+        Schema::Object(obj) => describe_schema_object(root, obj),
+        Schema::Bool(true) => ("any".to_string(), None, Vec::new()),
+        Schema::Bool(false) => ("never".to_string(), None, Vec::new()),
+    }
+}
+
+fn describe_schema_object(
+    root: &RootSchema,
+    obj: &SchemaObject,
+) -> (String, Option<String>, Vec<String>) {
+    let desc = obj
+        .metadata
+        .as_ref()
+        .and_then(|m| m.description.clone())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    // Try to extract enum values if present.
+    let enum_vals = obj
+        .enum_values
+        .as_ref()
+        .map(|vals| {
+            vals.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    // Prefer instance_type when available; otherwise fall back to validation hints.
+    let ty = if let Some(it) = obj.instance_type.as_ref() {
+        instance_type_to_string(it)
+    } else if obj.object.is_some() {
+        "object".to_string()
+    } else if obj.array.is_some() {
+        "array".to_string()
+    } else if obj.string.is_some() {
+        "string".to_string()
+    } else if obj.number.is_some() {
+        "number".to_string()
+    } else if obj
+        .subschemas
+        .as_ref()
+        .and_then(|s| s.any_of.as_ref())
+        .is_some()
+    {
+        // Common for Option<T>: anyOf [T, null]
+        let any_of = obj
+            .subschemas
+            .as_ref()
+            .and_then(|s| s.any_of.as_ref())
+            .unwrap();
+        let mut parts = Vec::new();
+        for s in any_of {
+            let (t, _, _) = describe_schema(root, s);
+            if !parts.contains(&t) {
+                parts.push(t);
+            }
+        }
+        parts.join(" | ")
+    } else {
+        "any".to_string()
+    };
+
+    (ty, desc, enum_vals)
+}
+
+fn instance_type_to_string(it: &SingleOrVec<InstanceType>) -> String {
+    match it {
+        SingleOrVec::Single(t) => instance_type_one_to_string(**t),
+        SingleOrVec::Vec(v) => v
+            .iter()
+            .map(|t| instance_type_one_to_string(*t))
+            .collect::<Vec<_>>()
+            .join(" | "),
+    }
+}
+
+fn instance_type_one_to_string(t: InstanceType) -> String {
+    match t {
+        InstanceType::Null => "null",
+        InstanceType::Boolean => "bool",
+        InstanceType::Object => "object",
+        InstanceType::Array => "array",
+        InstanceType::Number => "number",
+        InstanceType::String => "string",
+        InstanceType::Integer => "integer",
+    }
+    .to_string()
+}
+
+fn deref_schema<'a>(root: &'a RootSchema, schema: &'a Schema) -> &'a Schema {
+    let Schema::Object(obj) = schema else {
+        return schema;
+    };
+
+    let Some(reference) = obj.reference.as_ref() else {
+        return schema;
+    };
+
+    // schemars uses JSON pointer style refs like "#/definitions/TypeName"
+    let Some(name) = reference.strip_prefix("#/definitions/") else {
+        return schema;
+    };
+
+    root.definitions.get(name).unwrap_or(schema)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,14 +385,20 @@ mod tests {
     }
 
     #[test]
-    fn test_output_markdown_docs() {
-        assert!(output_docs().is_ok());
+    fn test_output_markdown_docs_generated() {
+        assert!(output_docs_generated().is_ok());
+    }
+
+    #[test]
+    fn test_output_markdown_docs_curated() {
+        assert!(output_docs_curated().is_ok());
     }
 
     #[test]
     fn test_output_schema_valid_formats() {
         assert!(output_generated_schema().is_ok());
         assert!(output_example_config().is_ok());
-        assert!(output_docs().is_ok());
+        assert!(output_docs_generated().is_ok());
+        assert!(output_docs_curated().is_ok());
     }
 }

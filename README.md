@@ -64,6 +64,9 @@ cargo build --release
 
 # Markdown Documentation
 ./target/release/genmcp config docs
+
+# Curated (hand-written) Markdown Documentation
+./target/release/genmcp config docs --curated
 ```
 
 ## Configuration

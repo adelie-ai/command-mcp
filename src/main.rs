@@ -90,7 +90,13 @@ enum ConfigCommands {
         generated: bool,
     },
     /// Output Markdown documentation for the configuration file format
-    Docs,
+    Docs {
+        /// If set, output the curated (hand-written) docs instead of generated docs.
+        ///
+        /// By default, docs are generated from the Rust config structures so they stay in sync.
+        #[arg(long)]
+        curated: bool,
+    },
 }
 
 #[tokio::main]
@@ -128,7 +134,13 @@ async fn main() -> Result<()> {
                     genmcp::config_schema::output_example_config()?
                 }
             }
-            ConfigCommands::Docs => genmcp::config_schema::output_docs()?,
+            ConfigCommands::Docs { curated } => {
+                if curated {
+                    genmcp::config_schema::output_docs_curated()?
+                } else {
+                    genmcp::config_schema::output_docs_generated()?
+                }
+            }
         },
     }
 
