@@ -131,6 +131,8 @@ Licensed under either of:
 
 at your option.
 
+When distributing under the Apache-2.0 option, you must also retain the attribution notices in [NOTICE](NOTICE) (if applicable for your distribution).
+
 ## Contributing
 
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
