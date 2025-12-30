@@ -12,6 +12,14 @@ pub enum GenMcpError {
     #[error("Configuration error: {0}")]
     Config(#[from] ConfigError),
 
+    /// JSON serialization/deserialization errors
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+
+    /// TOML serialization errors
+    #[error("TOML error: {0}")]
+    Toml(#[from] toml::ser::Error),
+
     /// Command execution errors
     #[error("Execution error: {0}")]
     Execution(#[from] ExecutionError),

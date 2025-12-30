@@ -26,7 +26,7 @@ Common scenarios:
 - **Stop After Feature**: Controlled duration execution for long-running processes (e.g., `tail -f`)
 - **Output Management**: Head/tail line limits, STDERR capture with configurable limits
 - **MAX Constraints**: Prevent LLM from exceeding resource limits
-- **Config Helpers**: Output generated schema, example config, and Markdown docs for the configuration format
+- **Schema Generation**: Output configuration schema in JSON, TOML, or Markdown format
 
 ## Quick Start
 
@@ -50,16 +50,19 @@ cargo build --release
 ./target/release/genmcp serve --config examples/config.toml --mode websocket --port 8080
 ```
 
-### Configuration Helpers (Schema / Example / Docs)
+### Generate Configuration Schema
 
 ```bash
-# Generated JSON Schema
+# JSON Schema
 ./target/release/genmcp config schema
 
-# Example TOML configuration
+# TOML Example
 ./target/release/genmcp config example
 
-# Markdown documentation
+# Generated TOML example (machine-friendly, stays in sync with Rust structs; no comments)
+./target/release/genmcp config example --generated
+
+# Markdown Documentation
 ./target/release/genmcp config docs
 ```
 

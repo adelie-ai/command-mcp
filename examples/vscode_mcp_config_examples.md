@@ -233,7 +233,7 @@ Always use absolute paths for the config file:
 
 ### Tools Not Appearing
 
-1. **Verify config file**: Use `genmcp schema --format json` to validate your config
+1. **Verify config file**: Use `genmcp config schema` to view the generated JSON Schema
 2. **Check tool names**: Tool names are prefixed with group name (e.g., `docker_run`, `file_operations_mv`)
 3. **Restart VS Code**: After changing MCP configuration, restart VS Code
 
@@ -296,7 +296,7 @@ After adding the configuration:
 To see what tools are available, you can generate the schema:
 
 ```bash
-genmcp schema --format json > schema.json
+genmcp config schema > schema.json
 ```
 
 This will show you all the tools, their parameters, and constraints defined in your config file.

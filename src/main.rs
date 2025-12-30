@@ -9,17 +9,38 @@ use axum::{
     routing::get,
     Router,
 };
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use futures_util::{SinkExt, StreamExt};
 use genmcp::config::Config;
 use genmcp::error::Result;
 use serde_json::Value;
+use std::fmt;
 use std::sync::Arc;
 use tokio::net::TcpListener;
+
+#[derive(Clone, Debug, ValueEnum)]
+enum TransportMode {
+    /// STDIN/STDOUT transport (recommended for VS Code and local usage)
+    Stdio,
+    /// WebSocket transport (recommended for hosted MCP services)
+    Websocket,
+}
+
+impl fmt::Display for TransportMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TransportMode::Stdio => write!(f, "stdio"),
+            TransportMode::Websocket => write!(f, "websocket"),
+        }
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "genmcp")]
 #[command(about = "Generic MCP Script Adapter Server")]
+#[command(
+    long_about = "genmcp turns existing command-line programs (scripts, binaries, and CLIs) into an MCP server.\n\nPrimary workflow:\n  1) Generate a starting config: genmcp config example > config.toml\n  2) Edit config.toml to define your tools\n  3) Run in stdio mode (VS Code): genmcp serve --config config.toml --mode stdio\n  4) Or run in websocket mode (hosted): genmcp serve --config config.toml --mode websocket --host 0.0.0.0 --port 8080\n\nTip: Use `genmcp config schema > schema.json` to view the exact config structure."
+)]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]
@@ -33,13 +54,13 @@ enum Commands {
         /// Path to TOML configuration file
         #[arg(short, long)]
         config: String,
-        /// Transport mode (stdio or websocket)
-        #[arg(short, long, default_value = "stdio")]
-        mode: String,
-        /// Port for WebSocket mode
+        /// Transport mode
+        #[arg(short, long, default_value_t = TransportMode::Stdio)]
+        mode: TransportMode,
+        /// Port for WebSocket mode (ignored for stdio)
         #[arg(short, long, default_value_t = 8080)]
         port: u16,
-        /// Host for WebSocket mode
+        /// Host for WebSocket mode (ignored for stdio)
         #[arg(long, default_value = "0.0.0.0")]
         host: String,
         /// JWT secret for WebSocket authentication (legacy, optional)
@@ -49,12 +70,27 @@ enum Commands {
         #[arg(long)]
         oidc_issuer: Option<String>,
     },
-    /// Output configuration file schema
-    Schema {
-        /// Output format (json, toml, or markdown)
-        #[arg(short, long, default_value = "json")]
-        format: String,
+    /// Configuration helpers (schema/docs/examples)
+    Config {
+        #[command(subcommand)]
+        command: ConfigCommands,
     },
+}
+
+#[derive(Subcommand)]
+enum ConfigCommands {
+    /// Output generated JSON Schema for the TOML configuration structure
+    Schema,
+    /// Output an example TOML configuration file
+    Example {
+        /// If set, emit a minimal TOML example generated from the Rust config structs (no comments).
+        ///
+        /// This is useful for tooling/LLMs because it stays in sync with the code.
+        #[arg(long)]
+        generated: bool,
+    },
+    /// Output Markdown documentation for the configuration file format
+    Docs,
 }
 
 #[tokio::main]
@@ -76,22 +112,24 @@ async fn main() -> Result<()> {
             // Create server
             let server = genmcp::server::McpServer::new(config)?;
 
-            match mode.as_str() {
-                "stdio" => {
-                    run_stdio_server(server).await?;
-                }
-                "websocket" => {
-                    run_websocket_server(server, &host, port, jwt_secret, oidc_issuer).await?;
-                }
-                _ => {
-                    eprintln!("Invalid mode: {}. Must be 'stdio' or 'websocket'", mode);
-                    std::process::exit(1);
+            match mode {
+                TransportMode::Stdio => run_stdio_server(server).await?,
+                TransportMode::Websocket => {
+                    run_websocket_server(server, &host, port, jwt_secret, oidc_issuer).await?
                 }
             }
         }
-        Commands::Schema { format } => {
-            genmcp::config_schema::output_schema(&format)?;
-        }
+        Commands::Config { command } => match command {
+            ConfigCommands::Schema => genmcp::config_schema::output_generated_schema()?,
+            ConfigCommands::Example { generated } => {
+                if generated {
+                    genmcp::config_schema::output_generated_example_config()?
+                } else {
+                    genmcp::config_schema::output_example_config()?
+                }
+            }
+            ConfigCommands::Docs => genmcp::config_schema::output_docs()?,
+        },
     }
 
     Ok(())

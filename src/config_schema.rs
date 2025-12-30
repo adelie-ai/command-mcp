@@ -4,155 +4,94 @@
 // Configuration schema generation for LLM assistance
 
 use crate::error::Result;
+use schemars::schema_for;
+use std::collections::HashMap;
 
-/// Output configuration schema in the specified format
-pub fn output_schema(format: &str) -> Result<()> {
-    match format {
-        "json" => output_json_schema(),
-        "toml" => output_toml_example(),
-        "markdown" => output_markdown_docs(),
-        _ => {
-            eprintln!(
-                "Invalid format: {}. Must be 'json', 'toml', or 'markdown'",
-                format
-            );
-            #[cfg(not(test))]
-            {
-                std::process::exit(1);
-            }
-            #[cfg(test)]
-            {
-                panic!("Invalid format: {}", format);
-            }
-        }
-    }
+/// Output generated JSON Schema for the TOML configuration structure.
+pub fn output_generated_schema() -> Result<()> {
+    let schema = schema_for!(crate::config::ConfigToml);
+    println!("{}", serde_json::to_string_pretty(&schema)?);
+    Ok(())
 }
 
-fn output_json_schema() -> Result<()> {
-    // Simplified JSON Schema structure to avoid recursion limit
-    let schema = r#"{
-  "type": "object",
-  "properties": {
-    "groups": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "properties": {
-          "default_timeout": { "type": "integer" },
-          "default_timeout_max": { "type": "integer" },
-          "default_stop_after": { "type": "integer" },
-          "default_stop_after_max": { "type": "integer" },
-          "default_termination_signal": { "type": "string", "enum": ["SIGTERM", "SIGINT"] },
-          "default_termination_grace_period": { "type": "integer" },
-          "default_output_head_lines": { "type": "integer" },
-          "default_output_tail_lines": { "type": "integer" },
-          "default_output_head_lines_max": { "type": "integer" },
-          "default_output_tail_lines_max": { "type": "integer" },
-          "default_stderr_lines": { "type": "integer" },
-          "default_stderr_lines_max": { "type": "integer" },
-          "tools": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["name", "description", "command"],
-              "properties": {
-                "name": { "type": "string" },
-                "description": { "type": "string" },
-                "command": { "type": "string" },
-                "arg_order": {
-                  "type": "array",
-                  "items": { "type": "string" },
-                  "description": "Optional explicit argument order for parameters"
-                },
-                "timeout": { "type": "integer" },
-                "timeout_max": { "type": "integer" },
-                "stop_after": { "type": "integer" },
-                "stop_after_max": { "type": "integer" },
-                "termination_signal": { "type": "string", "enum": ["SIGTERM", "SIGINT"] },
-                "termination_grace_period": { "type": "integer" },
-                "output_head_lines": { "type": "integer" },
-                "output_tail_lines": { "type": "integer" },
-                "output_head_lines_max": { "type": "integer" },
-                "output_tail_lines_max": { "type": "integer" },
-                "stderr_lines": { "type": "integer" },
-                "stderr_lines_max": { "type": "integer" },
-                "parameters": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "type": "object",
-                    "properties": {
-                      "description": { "type": "string" },
-                      "example": { "type": "string" },
-                      "flag": { "type": "string" },
-                      "takes_value": { "type": "boolean" },
-                      "required": { "type": "boolean" }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "websocket_auth": {
-      "type": "object",
-      "description": "WebSocket authentication configuration (optional). Omit to disable authentication.",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Enable JWT authentication (default: true if section exists)",
-          "default": true
+/// Output an example TOML configuration file.
+pub fn output_example_config() -> Result<()> {
+    println!("{}", include_str!("../examples/config.toml"));
+    Ok(())
+}
+
+/// Output a minimal TOML configuration file generated from the Rust config structures.
+///
+/// This output is intentionally "mechanical" (no comments) but stays in sync with the
+/// Rust structures: if you add a new required field, this code must be updated to compile.
+pub fn output_generated_example_config() -> Result<()> {
+    let config = build_generated_example();
+    println!("{}", toml::to_string_pretty(&config)?);
+    Ok(())
+}
+
+fn build_generated_example() -> crate::config::ConfigToml {
+    use crate::config::{ConfigToml, Group, Parameter, Tool};
+
+    let mut parameters = HashMap::new();
+    parameters.insert(
+        "text".to_string(),
+        Parameter {
+            description: "Text to print".to_string(),
+            example: Some("hello from genmcp".to_string()),
+            flag: None,
+            takes_value: false,
+            required: true,
         },
-        "secret": {
-          "type": "string",
-          "description": "JWT secret key for token validation (required if enabled=true)"
-        }
-      }
+    );
+
+    let tool = Tool {
+        name: "echo".to_string(),
+        description: "Example tool: echo text (replace with your real command)".to_string(),
+        command: "/bin/echo".to_string(),
+        arg_order: Some(vec!["text".to_string()]),
+        timeout: Some(30),
+        timeout_max: Some(300),
+        stop_after: None,
+        stop_after_max: None,
+        termination_signal: Some("SIGTERM".to_string()),
+        termination_grace_period: Some(3),
+        output_head_lines: Some(200),
+        output_tail_lines: Some(200),
+        output_head_lines_max: Some(2000),
+        output_tail_lines_max: Some(2000),
+        stderr_lines: Some(200),
+        stderr_lines_max: Some(2000),
+        parameters,
+    };
+
+    let group = Group {
+        default_timeout: Some(30),
+        default_timeout_max: Some(300),
+        default_stop_after: None,
+        default_stop_after_max: None,
+        default_termination_signal: Some("SIGTERM".to_string()),
+        default_termination_grace_period: Some(3),
+        default_output_head_lines: Some(200),
+        default_output_tail_lines: Some(200),
+        default_output_head_lines_max: Some(2000),
+        default_output_tail_lines_max: Some(2000),
+        default_stderr_lines: Some(200),
+        default_stderr_lines_max: Some(2000),
+        tools: vec![tool],
+    };
+
+    let mut groups = HashMap::new();
+    groups.insert("example".to_string(), group);
+
+    ConfigToml {
+        groups,
+        websocket_auth: None,
     }
-  }
-}"#;
-    println!("{}", schema);
-    Ok(())
 }
 
-fn output_toml_example() -> Result<()> {
-    let example = r#"# Example genmcp configuration file
-
-# WebSocket authentication configuration (optional)
-# Omit this section to disable authentication entirely
-[websocket_auth]
-enabled = true  # Enable JWT authentication (default: true)
-secret = "your-secret-key-here"  # Required if enabled=true
-
-# To disable authentication, either:
-# 1. Omit the [websocket_auth] section entirely, or
-# 2. Set enabled = false
-
-[groups.file_ops]
-default_timeout = 30
-default_timeout_max = 300
-default_output_head_lines = 100
-default_output_tail_lines = 100
-
-  [[groups.file_ops.tools]]
-  name = "mv"
-  description = "Move or rename files and directories"
-  command = "/bin/mv"
-  
-    [groups.file_ops.tools.parameters.source]
-    description = "Source file or directory"
-    required = true
-    
-    [groups.file_ops.tools.parameters.dest]
-    description = "Destination file or directory"
-    required = true
-"#;
-    println!("{}", example);
-    Ok(())
-}
-
-fn output_markdown_docs() -> Result<()> {
+/// Output Markdown documentation for the configuration file format.
+pub fn output_docs() -> Result<()> {
     let docs = r#"# genmcp Configuration Schema
 
 ## Overview
@@ -223,31 +162,40 @@ mod tests {
 
     #[test]
     fn test_output_json_schema() {
-        assert!(output_json_schema().is_ok());
+        assert!(output_generated_schema().is_ok());
+    }
+
+    #[test]
+    fn test_generated_schema_includes_expected_fields() {
+        let schema = schema_for!(crate::config::ConfigToml);
+        let s = serde_json::to_string(&schema).expect("schema should serialize to JSON");
+
+        assert!(s.contains("\"groups\""));
+        assert!(s.contains("\"websocket_auth\""));
+        assert!(s.contains("\"jwks_url\""));
+        assert!(s.contains("SIGTERM"));
+        assert!(s.contains("SIGINT"));
     }
 
     #[test]
     fn test_output_toml_example() {
-        assert!(output_toml_example().is_ok());
+        assert!(output_example_config().is_ok());
+    }
+
+    #[test]
+    fn test_output_generated_example_config() {
+        assert!(output_generated_example_config().is_ok());
     }
 
     #[test]
     fn test_output_markdown_docs() {
-        assert!(output_markdown_docs().is_ok());
-    }
-
-    #[test]
-    #[should_panic(expected = "Invalid format")]
-    fn test_output_schema_invalid_format() {
-        // This will exit, but we test that it at least doesn't panic on other errors
-        // The actual exit behavior is tested in integration tests
-        let _ = output_schema("invalid");
+        assert!(output_docs().is_ok());
     }
 
     #[test]
     fn test_output_schema_valid_formats() {
-        assert!(output_schema("json").is_ok());
-        assert!(output_schema("toml").is_ok());
-        assert!(output_schema("markdown").is_ok());
+        assert!(output_generated_schema().is_ok());
+        assert!(output_example_config().is_ok());
+        assert!(output_docs().is_ok());
     }
 }

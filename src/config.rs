@@ -4,12 +4,13 @@
 // TOML configuration parsing and validation
 
 use crate::error::{ConfigError, Result};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
 /// Termination signal type
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum TerminationSignal {
     #[serde(rename = "SIGTERM")]
@@ -41,7 +42,7 @@ impl std::str::FromStr for TerminationSignal {
 }
 
 /// Parameter definition for a tool
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct Parameter {
     /// Description of the parameter
     pub description: String,
@@ -68,7 +69,7 @@ fn default_false() -> bool {
 }
 
 /// Tool configuration
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct Tool {
     /// Base name of the tool (will be prefixed with group name)
     pub name: String,
@@ -96,6 +97,7 @@ pub struct Tool {
     pub stop_after_max: Option<u64>,
     /// Termination signal (optional, overrides group default)
     #[serde(default)]
+    #[schemars(with = "Option<TerminationSignal>")]
     pub termination_signal: Option<String>,
     /// Termination grace period in seconds (optional, overrides group default)
     #[serde(default)]
@@ -124,7 +126,7 @@ pub struct Tool {
 }
 
 /// Group configuration with defaults
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct Group {
     /// Default timeout in seconds
     #[serde(default)]
@@ -140,6 +142,7 @@ pub struct Group {
     pub default_stop_after_max: Option<u64>,
     /// Default termination signal
     #[serde(default)]
+    #[schemars(with = "Option<TerminationSignal>")]
     pub default_termination_signal: Option<String>,
     /// Default termination grace period in seconds
     #[serde(default)]
@@ -168,7 +171,7 @@ pub struct Group {
 }
 
 /// Root configuration structure matching TOML format
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct ConfigToml {
     /// Groups of tools
     #[serde(default)]
@@ -179,7 +182,7 @@ pub struct ConfigToml {
 }
 
 /// WebSocket authentication configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct WebSocketAuth {
     /// Enable JWT authentication (default: true)
     #[serde(default = "default_auth_enabled")]
@@ -691,8 +694,10 @@ default_timeout_max = 300
 
     #[test]
     fn test_examples_aws_cli_config_toml_parses() {
-        let content =
-            include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/examples/aws_cli_config.toml"));
+        let content = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/examples/aws_cli_config.toml"
+        ));
         let config = Config::from_str(content).unwrap();
         assert!(config.groups.contains_key("aws"));
     }

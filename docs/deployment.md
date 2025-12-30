@@ -177,7 +177,7 @@ genmcp serve --config config.toml --mode websocket --port 8081
 Validate configuration:
 
 ```bash
-genmcp schema --format toml > /tmp/schema.toml
+genmcp config example > /tmp/config.toml
 # Compare with your config
 ```
 
