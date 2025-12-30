@@ -29,7 +29,7 @@ Or in your VS Code settings.json:
       "args": [
         "serve",
         "--config",
-        "/path/to/examples/config.toml",
+        "/path/to/examples/unixtools_config.toml",
         "--mode",
         "stdio"
       ]

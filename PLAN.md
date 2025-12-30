@@ -327,7 +327,7 @@ The schema includes:
 - All field types and constraints
 - Documentation of how tool names are generated (`{group}_{tool}`)
 
-### 6b. Example Configuration File (`examples/config.toml`)
+### 6b. Example Configuration File (`examples/unixtools_config.toml`)
 
 The example configuration file demonstrates real-world usage by configuring common Unix/shell commands organized into functional groups:
 

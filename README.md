@@ -47,18 +47,18 @@ cargo build --release
 
 ### Basic Usage
 
-1. Create a configuration file (see `examples/config.toml`)
+1. Create a configuration file (see `examples/unixtools_config.toml` or start with `genmcp config example`)
 
 2. Choose the transport mode at runtime with `--mode` (this is **not** part of the config file).
 
 3. Run in STDIN/STDOUT mode (for VS Code):
 ```bash
-./target/release/genmcp serve --config examples/config.toml --mode stdio
+./target/release/genmcp serve --config examples/unixtools_config.toml --mode stdio
 ```
 
 4. Run in WebSocket mode:
 ```bash
-./target/release/genmcp serve --config examples/config.toml --mode websocket --port 8080
+./target/release/genmcp serve --config examples/unixtools_config.toml --mode websocket --port 8080
 ```
 
 ### Generate Configuration Schema
@@ -70,9 +70,6 @@ cargo build --release
 # TOML Example
 ./target/release/genmcp config example
 
-# Generated TOML example (machine-friendly, stays in sync with Rust structs; no comments)
-./target/release/genmcp config example --generated
-
 # Markdown Documentation
 ./target/release/genmcp config docs
 
@@ -82,7 +79,7 @@ cargo build --release
 
 ## Configuration
 
-See `examples/config.toml` for a comprehensive example configuration with common Unix commands.
+See `examples/unixtools_config.toml` for a comprehensive example configuration with common Unix commands.
 See `examples/aws_cli_config.toml` for a curated AWS CLI (aws) example configuration.
 
 Key configuration concepts:
