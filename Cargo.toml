@@ -28,6 +28,9 @@ toml = "0.9.8"
 tower-http = "0.6.8"
 url = "2.5"
 
+[dev-dependencies]
+tokio-tungstenite = "0.26"
+
 [lints.rust]
 warnings = "deny"
 
