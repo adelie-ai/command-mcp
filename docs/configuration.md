@@ -133,4 +133,5 @@ secret = "your-secret-key-here"  # Required if enabled=true
 
 See `examples/config.toml` for comprehensive examples with common Unix commands.
 See `examples/docker_config.toml` for Docker command examples.
+See `examples/aws_cli_config.toml` for AWS CLI (aws) command examples.
 

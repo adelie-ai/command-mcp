@@ -1,6 +1,21 @@
 # genmcp - Generic MCP Script Adapter
 
-A generic Model Context Protocol (MCP) server that acts as an adapter to arbitrary command-line tools and scripts. It supports dual-mode operation (STDIN/STDOUT for VS Code integration, WebSocket for web services) and provides a flexible TOML-based configuration system.
+`genmcp` turns existing command-line programs (shell scripts, binaries, and CLIs) into an MCP server you can plug into MCP clients (like VS Code) **without rewriting them as a bespoke MCP service**.
+
+## Why genmcp?
+
+- **Turn arbitrary scripts into MCP tools**: Wrap your existing shell scripts and internal tooling behind MCP, with structured tool definitions and parameters.
+- **Spin up MCP servers for existing CLIs quickly**: Point at a CLI you already trust, describe its arguments once in TOML, and expose it as an MCP tool set.
+- **Deploy the same config two ways**: Run locally via **STDIN/STDOUT** (VS Code integration) or host via **WebSocket** (service deployment).
+- **Safer execution by default**: No shell execution; commands run with explicit argument vectors.
+- **Operational guardrails**: Timeouts with graceful termination, `stop_after` for long-running commands, and output head/tail limits.
+- **LLM-safe limits**: Hard MAX constraints plus bounded runtime overrides to keep tools within resource budgets.
+
+Common scenarios:
+
+- **You already have a CLI** (or a pile of scripts) and want MCP support without a rewrite
+- **You want parameterized tools** with descriptions/examples that clients can surface nicely
+- **You want local + hosted** operation from the same configuration
 
 ## Features
 
@@ -11,7 +26,7 @@ A generic Model Context Protocol (MCP) server that acts as an adapter to arbitra
 - **Stop After Feature**: Controlled duration execution for long-running processes (e.g., `tail -f`)
 - **Output Management**: Head/tail line limits, STDERR capture with configurable limits
 - **MAX Constraints**: Prevent LLM from exceeding resource limits
-- **Schema Generation**: Output configuration schema in JSON, TOML, or Markdown format
+- **Config Helpers**: Output generated schema, example config, and Markdown docs for the configuration format
 
 ## Quick Start
 
@@ -35,22 +50,23 @@ cargo build --release
 ./target/release/genmcp serve --config examples/config.toml --mode websocket --port 8080
 ```
 
-### Generate Configuration Schema
+### Configuration Helpers (Schema / Example / Docs)
 
 ```bash
-# JSON Schema
-./target/release/genmcp schema --format json
+# Generated JSON Schema
+./target/release/genmcp config schema
 
-# TOML Example
-./target/release/genmcp schema --format toml
+# Example TOML configuration
+./target/release/genmcp config example
 
-# Markdown Documentation
-./target/release/genmcp schema --format markdown
+# Markdown documentation
+./target/release/genmcp config docs
 ```
 
 ## Configuration
 
 See `examples/config.toml` for a comprehensive example configuration with common Unix commands.
+See `examples/aws_cli_config.toml` for a curated AWS CLI (aws) example configuration.
 
 Key configuration concepts:
 

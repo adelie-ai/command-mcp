@@ -683,10 +683,18 @@ default_timeout_max = 300
 
     #[test]
     fn test_examples_config_toml_parses() {
-        let content = include_str!("../examples/config.toml");
+        let content = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/examples/config.toml"));
         let config = Config::from_str(content).unwrap();
         assert!(config.groups.contains_key("file_operations"));
         assert!(config.groups.contains_key("text_processing"));
+    }
+
+    #[test]
+    fn test_examples_aws_cli_config_toml_parses() {
+        let content =
+            include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/examples/aws_cli_config.toml"));
+        let config = Config::from_str(content).unwrap();
+        assert!(config.groups.contains_key("aws"));
     }
 
     #[test]
