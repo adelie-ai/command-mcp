@@ -93,6 +93,7 @@ pub async fn execute_command(
                 termination_grace_period,
                 output_head_lines,
                 output_tail_lines,
+                stderr_lines,
                 command,
             )
             .await;
@@ -110,11 +111,8 @@ pub async fn execute_command(
             Ok(ExecutionResult {
                 exit_code,
                 stdout: apply_line_limits_to_string(&stdout, output_head_lines, output_tail_lines),
-                stderr: if exit_code != 0 {
-                    get_last_n_lines(&stderr, stderr_lines)
-                } else {
-                    stderr
-                },
+                // Always return STDERR with consistent line limiting
+                stderr: get_last_n_lines(&stderr, stderr_lines),
                 stopped_after: false,
             })
         }
@@ -154,6 +152,7 @@ async fn handle_stop_after(
     termination_grace_period: u64,
     output_head_lines: u64,
     output_tail_lines: u64,
+    stderr_lines: u64,
     command: &str,
 ) -> Result<ExecutionResult> {
     let child_id = child.id();
@@ -178,7 +177,8 @@ async fn handle_stop_after(
                     Ok(ExecutionResult {
                         exit_code,
                         stdout: apply_line_limits_to_string(&stdout, output_head_lines, output_tail_lines),
-                        stderr,
+                        // Always return STDERR with consistent line limiting
+                        stderr: get_last_n_lines(&stderr, stderr_lines),
                         stopped_after: false,
                     })
                 }
@@ -203,7 +203,8 @@ async fn handle_stop_after(
                 Ok(ExecutionResult {
                     exit_code,
                     stdout: apply_line_limits_to_string(&stdout, output_head_lines, output_tail_lines),
-                    stderr,
+                    // Always return STDERR with consistent line limiting
+                    stderr: get_last_n_lines(&stderr, stderr_lines),
                     stopped_after: true,
                 })
             } else {
@@ -217,7 +218,8 @@ async fn handle_stop_after(
                 Ok(ExecutionResult {
                     exit_code: 0,
                     stdout: apply_line_limits_to_string(&stdout, output_head_lines, output_tail_lines),
-                    stderr,
+                    // Always return STDERR with consistent line limiting
+                    stderr: get_last_n_lines(&stderr, stderr_lines),
                     stopped_after: true,
                 })
             }
@@ -559,6 +561,91 @@ mod tests {
         assert_eq!(result.exit_code, 1);
         assert!(result.stdout.contains("stdout"));
         assert!(result.stderr.contains("stderr"));
+    }
+
+    #[tokio::test]
+    async fn test_stderr_returned_on_success() {
+        // Verify STDERR is returned even when exit code is 0
+        let result = execute_command(
+            "/bin/sh",
+            &[
+                "-c".to_string(),
+                "echo 'stdout' >&1 && echo 'stderr message' >&2 && exit 0".to_string(),
+            ],
+            10,
+            None,
+            TerminationSignal::Sigterm,
+            5,
+            100,
+            100,
+            50,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.exit_code, 0);
+        assert!(result.stdout.contains("stdout"));
+        // STDERR should be returned even on success
+        assert!(result.stderr.contains("stderr message"));
+    }
+
+    #[tokio::test]
+    async fn test_stderr_returned_when_empty() {
+        // Verify STDERR field exists even when there's no stderr output
+        let result = execute_command(
+            "/bin/echo",
+            &["hello".to_string()],
+            10,
+            None,
+            TerminationSignal::Sigterm,
+            5,
+            100,
+            100,
+            50,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.exit_code, 0);
+        assert!(result.stdout.contains("hello"));
+        // STDERR should be an empty string, not None
+        assert_eq!(result.stderr, "");
+    }
+
+    #[tokio::test]
+    async fn test_stderr_line_limiting() {
+        // Verify STDERR line limiting is applied consistently
+        let stderr_lines = vec![
+            "error line 1",
+            "error line 2",
+            "error line 3",
+            "error line 4",
+            "error line 5",
+        ];
+        let stderr_content = stderr_lines.join("\n");
+        
+        let result = execute_command(
+            "/bin/sh",
+            &[
+                "-c".to_string(),
+                format!("echo 'stdout' >&1 && echo '{}' >&2 && exit 1", stderr_content).to_string(),
+            ],
+            10,
+            None,
+            TerminationSignal::Sigterm,
+            5,
+            100,
+            100,
+            2, // Only return last 2 lines of stderr
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.exit_code, 1);
+        // Should only contain last 2 lines
+        assert!(result.stderr.contains("error line 4"));
+        assert!(result.stderr.contains("error line 5"));
+        assert!(!result.stderr.contains("error line 1"));
     }
 
     #[tokio::test]

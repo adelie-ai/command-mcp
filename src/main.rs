@@ -487,16 +487,27 @@ async fn handle_jsonrpc_message(
 
             if let Some(name) = tool_name {
                 match server.handle_tool_call(name, arguments).await {
-                    Ok(exec_result) => Ok(serde_json::json!({
-                        "content": [{
-                            "type": "text",
-                            "text": format!("Exit code: {}\nSTDOUT:\n{}\nSTDERR:\n{}",
-                                exec_result.exit_code,
-                                exec_result.stdout,
-                                exec_result.stderr)
-                        }],
-                        "isError": exec_result.exit_code != 0 && !exec_result.stopped_after,
-                    })),
+                    Ok(exec_result) => {
+                        // Always include STDERR in the response, even if empty
+                        let mut response_text = format!("Exit code: {}\n\nSTDOUT:\n{}", 
+                            exec_result.exit_code,
+                            exec_result.stdout);
+                        
+                        // Always show STDERR section, even if empty
+                        if exec_result.stderr.is_empty() {
+                            response_text.push_str("\n\nSTDERR:\n(no output)");
+                        } else {
+                            response_text.push_str(&format!("\n\nSTDERR:\n{}", exec_result.stderr));
+                        }
+                        
+                        Ok(serde_json::json!({
+                            "content": [{
+                                "type": "text",
+                                "text": response_text
+                            }],
+                            "isError": exec_result.exit_code != 0 && !exec_result.stopped_after,
+                        }))
+                    },
                     Err(e) => Err(e),
                 }
             } else {
