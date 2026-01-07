@@ -14,6 +14,103 @@ use tokio::sync::RwLock;
 // Re-export WebSocketAuth for external use
 pub use crate::config::WebSocketAuth;
 
+/// Parse shell-like arguments respecting quotes and escapes
+/// Handles single quotes, double quotes, escaped characters, and multi-line content
+#[cfg(test)]
+pub(crate) fn parse_shell_args(input: &str) -> Result<Vec<String>> {
+    parse_shell_args_impl(input)
+}
+
+#[cfg(not(test))]
+fn parse_shell_args(input: &str) -> Result<Vec<String>> {
+    parse_shell_args_impl(input)
+}
+
+fn parse_shell_args_impl(input: &str) -> Result<Vec<String>> {
+    let mut args = Vec::new();
+    let mut current_arg = String::new();
+    let mut chars = input.chars().peekable();
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+    let mut escaped = false;
+
+    while let Some(ch) = chars.next() {
+        if escaped {
+            // Handle escaped character
+            if in_double_quote {
+                // In double quotes, handle escape sequences
+                match ch {
+                    't' => current_arg.push('\t'),
+                    'n' => current_arg.push('\n'),
+                    'r' => current_arg.push('\r'),
+                    '\\' => current_arg.push('\\'),
+                    '"' => current_arg.push('"'),
+                    _ => current_arg.push(ch),
+                }
+            } else {
+                // Outside quotes, escaped character is literal
+                current_arg.push(ch);
+            }
+            escaped = false;
+            continue;
+        }
+
+        match ch {
+            '\\' if !in_single_quote => {
+                // Escape next character (unless in single quotes where backslash is literal)
+                escaped = true;
+            }
+            '\'' if !in_double_quote && !escaped => {
+                // Toggle single quote mode
+                in_single_quote = !in_single_quote;
+            }
+            '"' if !in_single_quote && !escaped => {
+                // Toggle double quote mode
+                in_double_quote = !in_double_quote;
+            }
+            '\\' if in_single_quote => {
+                // In single quotes, backslash is literal
+                current_arg.push(ch);
+            }
+            c if c.is_whitespace() && !in_single_quote && !in_double_quote => {
+                // Whitespace outside quotes: end current argument
+                if !current_arg.is_empty() {
+                    args.push(current_arg);
+                    current_arg = String::new();
+                }
+                // Skip remaining whitespace
+                while let Some(&next_ch) = chars.peek() {
+                    if next_ch.is_whitespace() {
+                        chars.next();
+                    } else {
+                        break;
+                    }
+                }
+            }
+            _ => {
+                // Regular character: add to current argument
+                current_arg.push(ch);
+            }
+        }
+    }
+
+    // Check for unclosed quotes
+    if in_single_quote || in_double_quote {
+        return Err(McpError::InvalidToolParameters(format!(
+            "Unclosed quote in arguments: {}",
+            input
+        ))
+        .into());
+    }
+
+    // Add final argument if any (skip empty)
+    if !current_arg.is_empty() {
+        args.push(current_arg);
+    }
+
+    Ok(args)
+}
+
 /// MCP server state
 pub struct McpServer {
     /// Tool registry
@@ -174,16 +271,14 @@ impl McpServer {
 
             // Positional parameters
             if let Some(str_value) = value.as_str() {
-                // Special handling for "args" parameter: split by spaces for commands like docker
-                if param_name == "args" && str_value.contains(' ') {
-                    let parts: Vec<&str> = str_value.split_whitespace().collect();
-                    for part in parts {
-                        let cleaned = part.trim_matches('"').trim_matches('\'');
-                        if !cleaned.is_empty() {
-                            tool_args.push(cleaned.to_string());
-                        }
-                    }
+                // Special handling for "args" parameter: parse shell-like arguments
+                // This handles quoted strings, escaped characters, and multi-line arguments
+                if param_name == "args" {
+                    let parsed_args = parse_shell_args(str_value)?;
+                    tool_args.extend(parsed_args);
                 } else {
+                    // For other parameters, pass the entire value as a single argument
+                    // This preserves multi-line content, heredocs, and special characters
                     tool_args.push(str_value.to_string());
                 }
             } else {
@@ -491,5 +586,201 @@ default_timeout_max = 300
 
         assert_eq!(result.exit_code, 0);
         assert!(result.stdout.contains("hello"));
+    }
+
+    #[test]
+    fn test_parse_shell_args_simple() {
+        let args = parse_shell_args("hello world").unwrap();
+        assert_eq!(args, vec!["hello", "world"]);
+    }
+
+    #[test]
+    fn test_parse_shell_args_single_quotes() {
+        let args = parse_shell_args("hello 'world with spaces'").unwrap();
+        assert_eq!(args, vec!["hello", "world with spaces"]);
+    }
+
+    #[test]
+    fn test_parse_shell_args_double_quotes() {
+        let args = parse_shell_args(r#"hello "world with spaces""#).unwrap();
+        assert_eq!(args, vec!["hello", "world with spaces"]);
+    }
+
+    #[test]
+    fn test_parse_shell_args_mixed_quotes() {
+        let args = parse_shell_args(r#"hello 'single' "double" test"#).unwrap();
+        assert_eq!(args, vec!["hello", "single", "double", "test"]);
+    }
+
+    #[test]
+    fn test_parse_shell_args_escaped_chars() {
+        let args = parse_shell_args(r#"hello\ world test"#).unwrap();
+        assert_eq!(args, vec!["hello world", "test"]);
+    }
+
+    #[test]
+    fn test_parse_shell_args_escaped_quotes() {
+        let args = parse_shell_args(r#"hello \"world\" test"#).unwrap();
+        assert_eq!(args, vec!["hello", "\"world\"", "test"]);
+    }
+
+    #[test]
+    fn test_parse_shell_args_multiline() {
+        // Newlines are whitespace, so should split into separate arguments
+        let multiline = "hello\nworld\ntest";
+        let args = parse_shell_args(multiline).unwrap();
+        assert_eq!(args, vec!["hello", "world", "test"]);
+    }
+
+    #[test]
+    fn test_parse_shell_args_heredoc_like() {
+        // Heredoc-like with spaces should split
+        let heredoc = "cat <<EOF\nhello world\nEOF";
+        let args = parse_shell_args(heredoc).unwrap();
+        // Should split on whitespace (including newlines)
+        assert!(args.len() > 1);
+        assert!(args.iter().any(|a| a.contains("<<EOF")));
+    }
+
+    #[test]
+    fn test_parse_shell_args_quoted_multiline() {
+        let multiline = r#"hello "world
+with
+newlines" test"#;
+        let args = parse_shell_args(multiline).unwrap();
+        assert_eq!(args.len(), 3);
+        assert_eq!(args[0], "hello");
+        assert_eq!(args[1], "world\nwith\nnewlines");
+        assert_eq!(args[2], "test");
+    }
+
+    #[test]
+    fn test_parse_shell_args_single_quote_preserves_backslash() {
+        // In single quotes, backslash is literal
+        let args = parse_shell_args(r#"hello 'world\test' foo"#).unwrap();
+        assert_eq!(args, vec!["hello", "world\\test", "foo"]);
+    }
+
+    #[test]
+    fn test_parse_shell_args_double_quote_escapes() {
+        // In double quotes, backslash escapes
+        let args = parse_shell_args(r#"hello "world\ttest" foo"#).unwrap();
+        assert_eq!(args, vec!["hello", "world\ttest", "foo"]);
+    }
+
+    #[test]
+    fn test_parse_shell_args_unclosed_quote() {
+        let result = parse_shell_args(r#"hello "world"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_shell_args_empty() {
+        let args = parse_shell_args("").unwrap();
+        assert_eq!(args, Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_parse_shell_args_whitespace_only() {
+        let args = parse_shell_args("   ").unwrap();
+        assert_eq!(args, Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_parse_shell_args_docker_like() {
+        // Simulate docker run arguments
+        let docker_args = r#"run --name my-container -p 8080:80 -d nginx:latest"#;
+        let args = parse_shell_args(docker_args).unwrap();
+        assert_eq!(
+            args,
+            vec!["run", "--name", "my-container", "-p", "8080:80", "-d", "nginx:latest"]
+        );
+    }
+
+    #[test]
+    fn test_parse_shell_args_docker_with_quotes() {
+        // Docker args with quoted values
+        let docker_args = r#"run --name "my container" -e "NODE_ENV=production" nginx:latest"#;
+        let args = parse_shell_args(docker_args).unwrap();
+        assert_eq!(
+            args,
+            vec!["run", "--name", "my container", "-e", "NODE_ENV=production", "nginx:latest"]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_bash_command_with_heredoc() {
+        // Test that bash -c with heredoc works correctly
+        let config_toml = r#"
+[groups.test]
+  [[groups.test.tools]]
+  name = "bash"
+  description = "Bash command"
+  command = "/bin/bash"
+  arg_order = ["command"]
+
+  [groups.test.tools.parameters.command]
+  description = "Command"
+  required = true
+  flag = "-c"
+  takes_value = true
+"#;
+        let config = Config::from_str(config_toml).unwrap();
+        let server = McpServer::new(config).unwrap();
+
+        // Test with a heredoc-like command
+        let heredoc_cmd = r#"cat <<EOF
+hello world
+this is a test
+EOF"#;
+        let result = server
+            .handle_tool_call(
+                "test_bash",
+                &serde_json::json!({
+                    "command": heredoc_cmd
+                }),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.exit_code, 0);
+        assert!(result.stdout.contains("hello world"));
+        assert!(result.stdout.contains("this is a test"));
+    }
+
+    #[tokio::test]
+    async fn test_bash_command_with_quoted_spaces() {
+        // Test that bash -c with quoted strings works correctly
+        let config_toml = r#"
+[groups.test]
+  [[groups.test.tools]]
+  name = "bash"
+  description = "Bash command"
+  command = "/bin/bash"
+  arg_order = ["command"]
+
+  [groups.test.tools.parameters.command]
+  description = "Command"
+  required = true
+  flag = "-c"
+  takes_value = true
+"#;
+        let config = Config::from_str(config_toml).unwrap();
+        let server = McpServer::new(config).unwrap();
+
+        // Test with quoted string containing spaces
+        let quoted_cmd = r#"echo "hello world with spaces""#;
+        let result = server
+            .handle_tool_call(
+                "test_bash",
+                &serde_json::json!({
+                    "command": quoted_cmd
+                }),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.exit_code, 0);
+        assert!(result.stdout.contains("hello world with spaces"));
     }
 }
