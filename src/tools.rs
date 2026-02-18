@@ -213,8 +213,8 @@ impl ToolRegistry {
         output_tail_lines: Option<u64>,
         stderr_lines: Option<u64>,
     ) -> Result<()> {
-        if let Some(timeout_val) = timeout {
-            if timeout_val > tool.timeout_max {
+        if let Some(timeout_val) = timeout
+            && timeout_val > tool.timeout_max {
                 return Err(crate::error::McpError::OverrideExceedsMax {
                     field: "timeout".to_string(),
                     value: timeout_val,
@@ -222,10 +222,9 @@ impl ToolRegistry {
                 }
                 .into());
             }
-        }
 
-        if let Some(stop_after_val) = stop_after {
-            if stop_after_val > tool.stop_after_max {
+        if let Some(stop_after_val) = stop_after
+            && stop_after_val > tool.stop_after_max {
                 return Err(crate::error::McpError::OverrideExceedsMax {
                     field: "stop_after".to_string(),
                     value: stop_after_val,
@@ -233,10 +232,9 @@ impl ToolRegistry {
                 }
                 .into());
             }
-        }
 
-        if let Some(head_lines) = output_head_lines {
-            if head_lines > tool.output_head_lines_max {
+        if let Some(head_lines) = output_head_lines
+            && head_lines > tool.output_head_lines_max {
                 return Err(crate::error::McpError::OverrideExceedsMax {
                     field: "output_head_lines".to_string(),
                     value: head_lines,
@@ -244,10 +242,9 @@ impl ToolRegistry {
                 }
                 .into());
             }
-        }
 
-        if let Some(tail_lines) = output_tail_lines {
-            if tail_lines > tool.output_tail_lines_max {
+        if let Some(tail_lines) = output_tail_lines
+            && tail_lines > tool.output_tail_lines_max {
                 return Err(crate::error::McpError::OverrideExceedsMax {
                     field: "output_tail_lines".to_string(),
                     value: tail_lines,
@@ -255,10 +252,9 @@ impl ToolRegistry {
                 }
                 .into());
             }
-        }
 
-        if let Some(stderr_lines_val) = stderr_lines {
-            if stderr_lines_val > tool.stderr_lines_max {
+        if let Some(stderr_lines_val) = stderr_lines
+            && stderr_lines_val > tool.stderr_lines_max {
                 return Err(crate::error::McpError::OverrideExceedsMax {
                     field: "stderr_lines".to_string(),
                     value: stderr_lines_val,
@@ -266,7 +262,6 @@ impl ToolRegistry {
                 }
                 .into());
             }
-        }
 
         Ok(())
     }

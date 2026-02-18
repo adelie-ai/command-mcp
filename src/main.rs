@@ -299,8 +299,8 @@ async fn websocket_handler(
 ) -> Response {
     // Authenticate WebSocket connection if enabled
     if let Some(ref auth) = jwt_config {
-        if auth.enabled {
-            if let Err(e) = validate_jwt_token(&headers, auth, jwks_verifier.as_deref()).await {
+        if auth.enabled
+            && let Err(e) = validate_jwt_token(&headers, auth, jwks_verifier.as_deref()).await {
                 eprintln!("WebSocket authentication failed: {}", e);
                 return (
                     StatusCode::UNAUTHORIZED,
@@ -308,7 +308,6 @@ async fn websocket_handler(
                 )
                     .into_response();
             }
-        }
         // If auth is disabled, allow connection without authentication
     } else {
         // No auth config means authentication is disabled
@@ -346,14 +345,12 @@ async fn handle_websocket_connection(
                 let response = handle_jsonrpc_message(Arc::clone(&server), message).await;
 
                 // Send response if present
-                if let Some(resp) = response {
-                    if let Ok(resp_str) = serde_json::to_string(&resp) {
-                        if let Err(e) = sender.send(Message::Text(resp_str.into())).await {
+                if let Some(resp) = response
+                    && let Ok(resp_str) = serde_json::to_string(&resp)
+                        && let Err(e) = sender.send(Message::Text(resp_str.into())).await {
                             eprintln!("Error sending WebSocket response: {}", e);
                             break;
                         }
-                    }
-                }
             }
             Ok(Message::Close(_)) => {
                 break;

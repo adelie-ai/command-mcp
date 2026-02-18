@@ -82,8 +82,8 @@ pub async fn execute_command(
     });
 
     // Handle stop_after if configured
-    if let Some(stop_after) = stop_after_secs {
-        if stop_after > 0 {
+    if let Some(stop_after) = stop_after_secs
+        && stop_after > 0 {
             return handle_stop_after(
                 child,
                 stdout_task,
@@ -98,7 +98,6 @@ pub async fn execute_command(
             )
             .await;
         }
-    }
 
     // Handle timeout
     let timeout_duration = Duration::from_secs(timeout_secs);

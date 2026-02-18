@@ -328,8 +328,8 @@ impl Config {
     /// Validate configuration
     fn validate(&mut self) -> Result<()> {
         // Validate WebSocket auth configuration
-        if let Some(ref auth) = self.websocket_auth {
-            if auth.enabled {
+        if let Some(ref auth) = self.websocket_auth
+            && auth.enabled {
                 // Must have either secret, oidc_issuer, or jwks_url
                 let has_auth_method =
                     auth.secret.is_some() || auth.oidc_issuer.is_some() || auth.jwks_url.is_some();
@@ -359,7 +359,6 @@ impl Config {
                     .into());
                 }
             }
-        }
 
         let mut tool_names = std::collections::HashSet::new();
 
@@ -412,11 +411,10 @@ impl Config {
                 tool_names.insert(full_name.clone());
 
                 // Validate tool overrides
-                if let Some(timeout) = tool.timeout {
-                    if timeout == 0 {
+                if let Some(timeout) = tool.timeout
+                    && timeout == 0 {
                         return Err(ConfigError::InvalidTimeout(0).into());
                     }
-                }
 
                 if let Some(ref signal_str) = tool.termination_signal {
                     signal_str
@@ -505,8 +503,8 @@ impl Config {
         max: Option<u64>,
         field_name: &str,
     ) -> Result<()> {
-        if let (Some(default_val), Some(max_val)) = (default, max) {
-            if max_val < default_val {
+        if let (Some(default_val), Some(max_val)) = (default, max)
+            && max_val < default_val {
                 return Err(ConfigError::InvalidMax {
                     field: field_name.to_string(),
                     default: default_val,
@@ -514,7 +512,6 @@ impl Config {
                 }
                 .into());
             }
-        }
         Ok(())
     }
 
@@ -524,8 +521,8 @@ impl Config {
         max: Option<u64>,
         field_name: &str,
     ) -> Result<()> {
-        if let (Some(default_val), Some(max_val)) = (default, max) {
-            if max_val < default_val {
+        if let (Some(default_val), Some(max_val)) = (default, max)
+            && max_val < default_val {
                 return Err(ConfigError::InvalidMax {
                     field: field_name.to_string(),
                     default: default_val,
@@ -533,7 +530,6 @@ impl Config {
                 }
                 .into());
             }
-        }
         Ok(())
     }
 
