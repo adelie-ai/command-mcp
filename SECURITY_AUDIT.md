@@ -23,10 +23,6 @@ Config files are read without size limits.
 
 ---
 
-## Resolved (2026-03-31)
-
-- Hardcoded debug log path removed (`/home/dave/projects/genmcp/.cursor/debug.log`)
-
 ## Positive Findings
 
 - `Command::new()` used directly (no shell invocation)
