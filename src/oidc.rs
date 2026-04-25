@@ -95,13 +95,9 @@ impl JwksVerifier {
             }
         }
 
-        // Initialize verifier
-        // RemoteJwksVerifier::new(url, client_option, cache_duration)
-        let verifier = RemoteJwksVerifier::new(
-            self.jwks_url.clone(),
-            None,                                 // Use default HTTP client
-            std::time::Duration::from_secs(3600), // Cache for 1 hour
-        );
+        let verifier = RemoteJwksVerifier::builder(self.jwks_url.clone())
+            .with_cache_duration(std::time::Duration::from_secs(3600))
+            .build();
 
         let verifier = Arc::new(verifier);
 

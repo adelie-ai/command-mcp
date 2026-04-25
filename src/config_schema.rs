@@ -4,8 +4,8 @@
 // Configuration schema generation for LLM assistance
 
 use crate::error::Result;
-use schemars::schema::{InstanceType, RootSchema, Schema, SchemaObject, SingleOrVec};
-use schemars::schema_for;
+use schemars::{Schema, schema_for};
+use serde_json::Value;
 use std::collections::HashMap;
 
 /// Output generated JSON Schema for the TOML configuration structure.
@@ -167,7 +167,7 @@ Optional `[websocket_auth]` section for WebSocket mode:
     Ok(())
 }
 
-fn render_markdown_docs_from_schema(root: &RootSchema) -> String {
+fn render_markdown_docs_from_schema(root: &Schema) -> String {
     let mut out = String::new();
 
     out.push_str("# genmcp Configuration (generated)\n\n");
@@ -182,30 +182,48 @@ fn render_markdown_docs_from_schema(root: &RootSchema) -> String {
     );
     out.push_str("- `genmcp config docs --curated` (hand-written docs)\n\n");
 
+    let root_value = root.as_value();
+    let defs = root_value.get("$defs").and_then(|v| v.as_object());
+
     out.push_str("## Top-level keys\n\n");
-    if let Some(obj) = root.schema.object.as_ref() {
-        let required = &obj.required;
-        for (name, schema) in &obj.properties {
-            render_field(&mut out, root, name, schema, required.contains(name));
+    if let Some(properties) = root_value
+        .get("properties")
+        .and_then(|v| v.as_object())
+    {
+        let required: Vec<&str> = root_value
+            .get("required")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
+            .unwrap_or_default();
+        for (name, schema) in properties {
+            render_field(&mut out, defs, name, schema, required.contains(&name.as_str()));
         }
     } else {
-        out.push_str("_Unexpected: root schema is not an object._\n");
+        out.push_str("_Unexpected: root schema has no properties._\n");
     }
 
     out.push_str("\n## Definitions\n\n");
-    for def in ["Group", "Tool", "Parameter", "WebSocketAuth"] {
-        if let Some(schema) = root.definitions.get(def) {
-            out.push_str(&format!("### `{def}`\n\n"));
-            render_object_fields(&mut out, root, schema);
-            out.push('\n');
+    if let Some(defs_map) = defs {
+        for def in ["Group", "Tool", "Parameter", "WebSocketAuth"] {
+            if let Some(schema) = defs_map.get(def) {
+                out.push_str(&format!("### `{def}`\n\n"));
+                render_object_fields(&mut out, defs, schema);
+                out.push('\n');
+            }
         }
     }
 
     out
 }
 
-fn render_field(out: &mut String, root: &RootSchema, name: &str, schema: &Schema, required: bool) {
-    let (ty, desc, enum_vals) = describe_schema(root, schema);
+fn render_field(
+    out: &mut String,
+    defs: Option<&serde_json::Map<String, Value>>,
+    name: &str,
+    schema: &Value,
+    required: bool,
+) {
+    let (ty, desc, enum_vals) = describe_schema(defs, schema);
     let req = if required { "Required" } else { "Optional" };
     out.push_str(&format!("- **`{name}`** ({req}, `{ty}`)"));
     if let Some(d) = desc {
@@ -224,51 +242,62 @@ fn render_field(out: &mut String, root: &RootSchema, name: &str, schema: &Schema
     }
 }
 
-fn render_object_fields(out: &mut String, root: &RootSchema, schema: &Schema) {
-    let schema = deref_schema(root, schema);
-    let Schema::Object(obj) = schema else {
+fn render_object_fields(
+    out: &mut String,
+    defs: Option<&serde_json::Map<String, Value>>,
+    schema: &Value,
+) {
+    let schema = deref_schema(defs, schema);
+    let Some(obj) = schema.as_object() else {
         out.push_str("_Not an object schema._\n");
         return;
     };
-    let Some(o) = obj.object.as_ref() else {
-        out.push_str("_Not an object schema._\n");
+    let Some(properties) = obj.get("properties").and_then(|v| v.as_object()) else {
+        out.push_str("_No fields._\n");
         return;
     };
-
-    if o.properties.is_empty() {
+    if properties.is_empty() {
         out.push_str("_No fields._\n");
         return;
     }
+    let required: Vec<&str> = obj
+        .get("required")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
+        .unwrap_or_default();
 
-    for (name, field_schema) in &o.properties {
-        render_field(out, root, name, field_schema, o.required.contains(name));
+    for (name, field_schema) in properties {
+        render_field(out, defs, name, field_schema, required.contains(&name.as_str()));
     }
 }
 
-fn describe_schema(root: &RootSchema, schema: &Schema) -> (String, Option<String>, Vec<String>) {
-    let schema = deref_schema(root, schema);
-    match schema {
-        Schema::Object(obj) => describe_schema_object(root, obj),
-        Schema::Bool(true) => ("any".to_string(), None, Vec::new()),
-        Schema::Bool(false) => ("never".to_string(), None, Vec::new()),
-    }
-}
-
-fn describe_schema_object(
-    root: &RootSchema,
-    obj: &SchemaObject,
+fn describe_schema(
+    defs: Option<&serde_json::Map<String, Value>>,
+    schema: &Value,
 ) -> (String, Option<String>, Vec<String>) {
+    let schema = deref_schema(defs, schema);
+
+    if let Some(b) = schema.as_bool() {
+        return (
+            if b { "any" } else { "never" }.to_string(),
+            None,
+            Vec::new(),
+        );
+    }
+
+    let Some(obj) = schema.as_object() else {
+        return ("any".to_string(), None, Vec::new());
+    };
+
     let desc = obj
-        .metadata
-        .as_ref()
-        .and_then(|m| m.description.clone())
+        .get("description")
+        .and_then(|v| v.as_str())
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
 
-    // Try to extract enum values if present.
     let enum_vals = obj
-        .enum_values
-        .as_ref()
+        .get("enum")
+        .and_then(|v| v.as_array())
         .map(|vals| {
             vals.iter()
                 .filter_map(|v| v.as_str().map(|s| s.to_string()))
@@ -276,32 +305,17 @@ fn describe_schema_object(
         })
         .unwrap_or_default();
 
-    // Prefer instance_type when available; otherwise fall back to validation hints.
-    let ty = if let Some(it) = obj.instance_type.as_ref() {
-        instance_type_to_string(it)
-    } else if obj.object.is_some() {
+    let ty = if let Some(t) = obj.get("type") {
+        json_type_to_string(t)
+    } else if obj.contains_key("properties") {
         "object".to_string()
-    } else if obj.array.is_some() {
+    } else if obj.contains_key("items") {
         "array".to_string()
-    } else if obj.string.is_some() {
-        "string".to_string()
-    } else if obj.number.is_some() {
-        "number".to_string()
-    } else if obj
-        .subschemas
-        .as_ref()
-        .and_then(|s| s.any_of.as_ref())
-        .is_some()
-    {
+    } else if let Some(any_of) = obj.get("anyOf").and_then(|v| v.as_array()) {
         // Common for Option<T>: anyOf [T, null]
-        let any_of = obj
-            .subschemas
-            .as_ref()
-            .and_then(|s| s.any_of.as_ref())
-            .unwrap();
         let mut parts = Vec::new();
         for s in any_of {
-            let (t, _, _) = describe_schema(root, s);
+            let (t, _, _) = describe_schema(defs, s);
             if !parts.contains(&t) {
                 parts.push(t);
             }
@@ -314,45 +328,34 @@ fn describe_schema_object(
     (ty, desc, enum_vals)
 }
 
-fn instance_type_to_string(it: &SingleOrVec<InstanceType>) -> String {
-    match it {
-        SingleOrVec::Single(t) => instance_type_one_to_string(**t),
-        SingleOrVec::Vec(v) => v
+fn json_type_to_string(t: &Value) -> String {
+    match t {
+        Value::String(s) => s.clone(),
+        Value::Array(arr) => arr
             .iter()
-            .map(|t| instance_type_one_to_string(*t))
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
             .collect::<Vec<_>>()
             .join(" | "),
+        _ => "any".to_string(),
     }
 }
 
-fn instance_type_one_to_string(t: InstanceType) -> String {
-    match t {
-        InstanceType::Null => "null",
-        InstanceType::Boolean => "bool",
-        InstanceType::Object => "object",
-        InstanceType::Array => "array",
-        InstanceType::Number => "number",
-        InstanceType::String => "string",
-        InstanceType::Integer => "integer",
-    }
-    .to_string()
-}
-
-fn deref_schema<'a>(root: &'a RootSchema, schema: &'a Schema) -> &'a Schema {
-    let Schema::Object(obj) = schema else {
+fn deref_schema<'a>(
+    defs: Option<&'a serde_json::Map<String, Value>>,
+    schema: &'a Value,
+) -> &'a Value {
+    let Some(reference) = schema.get("$ref").and_then(|v| v.as_str()) else {
         return schema;
     };
 
-    let Some(reference) = obj.reference.as_ref() else {
+    let name = reference
+        .strip_prefix("#/$defs/")
+        .or_else(|| reference.strip_prefix("#/definitions/"));
+    let Some(name) = name else {
         return schema;
     };
 
-    // schemars uses JSON pointer style refs like "#/definitions/TypeName"
-    let Some(name) = reference.strip_prefix("#/definitions/") else {
-        return schema;
-    };
-
-    root.definitions.get(name).unwrap_or(schema)
+    defs.and_then(|m| m.get(name)).unwrap_or(schema)
 }
 
 #[cfg(test)]

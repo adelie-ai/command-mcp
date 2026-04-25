@@ -11,28 +11,24 @@ axum-extra = "0.12.5"
 clap = { version = "4.5.54", features = ["derive", "env"] }
 futures-util = "0.3.31"
 jsonwebtoken = "10.2.0"
-jwtk = "0.4"
-nix = { version = "0.30.1", features = ["process", "signal"] }
-# Temporary pin: native-tls 0.2.17 fails to compile on Rust 1.93 during
-# `cargo install --path .` due to non-exhaustive Protocol matching upstream.
-# Remove once upstream native-tls releases a fix and transitive deps pick it up.
-native-tls = "=0.2.14"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-rust-mcp-schema = "0.9.4"
-rust-mcp-sdk = "0.8.1"
-rust-mcp-transport = "0.8.0"
+jwtk = "0.5"
+nix = { version = "0.31", features = ["process", "signal"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "webpki-roots"] }
+rust-mcp-schema = "0.10"
+rust-mcp-sdk = "0.9"
+rust-mcp-transport = "0.9"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-schemars = { version = "0.8.22", features = ["derive"] }
+schemars = { version = "1", features = ["derive"] }
 tempfile = "3.24"
 thiserror = "2.0.17"
 tokio = { version = "1.49", features = ["full"] }
-toml = "0.9.11"
+toml = "1"
 tower-http = "0.6.8"
 url = { version = "2.5", features = ["serde"] }
 
 [dev-dependencies]
-tokio-tungstenite = "0.26"
+tokio-tungstenite = "0.29"
 
 [lints.rust]
 warnings = "deny"
