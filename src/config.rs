@@ -329,36 +329,35 @@ impl Config {
     fn validate(&mut self) -> Result<()> {
         // Validate WebSocket auth configuration
         if let Some(ref auth) = self.websocket_auth
-            && auth.enabled {
-                // Must have either secret, oidc_issuer, or jwks_url
-                let has_auth_method =
-                    auth.secret.is_some() || auth.oidc_issuer.is_some() || auth.jwks_url.is_some();
-                if !has_auth_method {
-                    return Err(ConfigError::InvalidValue {
+            && auth.enabled
+        {
+            // Must have either secret, oidc_issuer, or jwks_url
+            let has_auth_method =
+                auth.secret.is_some() || auth.oidc_issuer.is_some() || auth.jwks_url.is_some();
+            if !has_auth_method {
+                return Err(ConfigError::InvalidValue {
                         field: "websocket_auth".to_string(),
                         message: "One of 'secret', 'oidc_issuer', or 'jwks_url' is required when authentication is enabled".to_string(),
                     }.into());
-                }
-                // Can't have both secret and OIDC/JWKS
-                if auth.secret.is_some() && (auth.oidc_issuer.is_some() || auth.jwks_url.is_some())
-                {
-                    return Err(ConfigError::InvalidValue {
-                        field: "websocket_auth".to_string(),
-                        message:
-                            "Cannot specify both 'secret' and OIDC/JWKS authentication methods"
-                                .to_string(),
-                    }
-                    .into());
-                }
-                // Can't have both oidc_issuer and jwks_url
-                if auth.oidc_issuer.is_some() && auth.jwks_url.is_some() {
-                    return Err(ConfigError::InvalidValue {
-                        field: "websocket_auth".to_string(),
-                        message: "Cannot specify both 'oidc_issuer' and 'jwks_url'".to_string(),
-                    }
-                    .into());
-                }
             }
+            // Can't have both secret and OIDC/JWKS
+            if auth.secret.is_some() && (auth.oidc_issuer.is_some() || auth.jwks_url.is_some()) {
+                return Err(ConfigError::InvalidValue {
+                    field: "websocket_auth".to_string(),
+                    message: "Cannot specify both 'secret' and OIDC/JWKS authentication methods"
+                        .to_string(),
+                }
+                .into());
+            }
+            // Can't have both oidc_issuer and jwks_url
+            if auth.oidc_issuer.is_some() && auth.jwks_url.is_some() {
+                return Err(ConfigError::InvalidValue {
+                    field: "websocket_auth".to_string(),
+                    message: "Cannot specify both 'oidc_issuer' and 'jwks_url'".to_string(),
+                }
+                .into());
+            }
+        }
 
         let mut tool_names = std::collections::HashSet::new();
 
@@ -412,9 +411,10 @@ impl Config {
 
                 // Validate tool overrides
                 if let Some(timeout) = tool.timeout
-                    && timeout == 0 {
-                        return Err(ConfigError::InvalidTimeout(0).into());
-                    }
+                    && timeout == 0
+                {
+                    return Err(ConfigError::InvalidTimeout(0).into());
+                }
 
                 if let Some(ref signal_str) = tool.termination_signal {
                     signal_str
@@ -504,14 +504,15 @@ impl Config {
         field_name: &str,
     ) -> Result<()> {
         if let (Some(default_val), Some(max_val)) = (default, max)
-            && max_val < default_val {
-                return Err(ConfigError::InvalidMax {
-                    field: field_name.to_string(),
-                    default: default_val,
-                    max: max_val,
-                }
-                .into());
+            && max_val < default_val
+        {
+            return Err(ConfigError::InvalidMax {
+                field: field_name.to_string(),
+                default: default_val,
+                max: max_val,
             }
+            .into());
+        }
         Ok(())
     }
 
@@ -522,14 +523,15 @@ impl Config {
         field_name: &str,
     ) -> Result<()> {
         if let (Some(default_val), Some(max_val)) = (default, max)
-            && max_val < default_val {
-                return Err(ConfigError::InvalidMax {
-                    field: field_name.to_string(),
-                    default: default_val,
-                    max: max_val,
-                }
-                .into());
+            && max_val < default_val
+        {
+            return Err(ConfigError::InvalidMax {
+                field: field_name.to_string(),
+                default: default_val,
+                max: max_val,
             }
+            .into());
+        }
         Ok(())
     }
 
@@ -682,8 +684,10 @@ default_timeout_max = 300
 
     #[test]
     fn test_examples_config_toml_parses() {
-        let content =
-            include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/examples/unixtools_config.toml"));
+        let content = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/examples/unixtools_config.toml"
+        ));
         let config = Config::from_str(content).unwrap();
         assert!(config.groups.contains_key("file_operations"));
         assert!(config.groups.contains_key("text_processing"));

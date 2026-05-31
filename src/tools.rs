@@ -214,54 +214,59 @@ impl ToolRegistry {
         stderr_lines: Option<u64>,
     ) -> Result<()> {
         if let Some(timeout_val) = timeout
-            && timeout_val > tool.timeout_max {
-                return Err(crate::error::McpError::OverrideExceedsMax {
-                    field: "timeout".to_string(),
-                    value: timeout_val,
-                    max: tool.timeout_max,
-                }
-                .into());
+            && timeout_val > tool.timeout_max
+        {
+            return Err(crate::error::McpError::OverrideExceedsMax {
+                field: "timeout".to_string(),
+                value: timeout_val,
+                max: tool.timeout_max,
             }
+            .into());
+        }
 
         if let Some(stop_after_val) = stop_after
-            && stop_after_val > tool.stop_after_max {
-                return Err(crate::error::McpError::OverrideExceedsMax {
-                    field: "stop_after".to_string(),
-                    value: stop_after_val,
-                    max: tool.stop_after_max,
-                }
-                .into());
+            && stop_after_val > tool.stop_after_max
+        {
+            return Err(crate::error::McpError::OverrideExceedsMax {
+                field: "stop_after".to_string(),
+                value: stop_after_val,
+                max: tool.stop_after_max,
             }
+            .into());
+        }
 
         if let Some(head_lines) = output_head_lines
-            && head_lines > tool.output_head_lines_max {
-                return Err(crate::error::McpError::OverrideExceedsMax {
-                    field: "output_head_lines".to_string(),
-                    value: head_lines,
-                    max: tool.output_head_lines_max,
-                }
-                .into());
+            && head_lines > tool.output_head_lines_max
+        {
+            return Err(crate::error::McpError::OverrideExceedsMax {
+                field: "output_head_lines".to_string(),
+                value: head_lines,
+                max: tool.output_head_lines_max,
             }
+            .into());
+        }
 
         if let Some(tail_lines) = output_tail_lines
-            && tail_lines > tool.output_tail_lines_max {
-                return Err(crate::error::McpError::OverrideExceedsMax {
-                    field: "output_tail_lines".to_string(),
-                    value: tail_lines,
-                    max: tool.output_tail_lines_max,
-                }
-                .into());
+            && tail_lines > tool.output_tail_lines_max
+        {
+            return Err(crate::error::McpError::OverrideExceedsMax {
+                field: "output_tail_lines".to_string(),
+                value: tail_lines,
+                max: tool.output_tail_lines_max,
             }
+            .into());
+        }
 
         if let Some(stderr_lines_val) = stderr_lines
-            && stderr_lines_val > tool.stderr_lines_max {
-                return Err(crate::error::McpError::OverrideExceedsMax {
-                    field: "stderr_lines".to_string(),
-                    value: stderr_lines_val,
-                    max: tool.stderr_lines_max,
-                }
-                .into());
+            && stderr_lines_val > tool.stderr_lines_max
+        {
+            return Err(crate::error::McpError::OverrideExceedsMax {
+                field: "stderr_lines".to_string(),
+                value: stderr_lines_val,
+                max: tool.stderr_lines_max,
             }
+            .into());
+        }
 
         Ok(())
     }
@@ -387,16 +392,18 @@ default_output_head_lines_max = 1000
         let tool = registry.get_tool("test_group_test_tool").unwrap();
 
         // Valid overrides (within MAX)
-        assert!(registry
-            .validate_runtime_overrides(
-                tool,
-                Some(100), // timeout < 300 (max)
-                None,
-                Some(500), // output_head_lines < 1000 (max)
-                None,
-                None,
-            )
-            .is_ok());
+        assert!(
+            registry
+                .validate_runtime_overrides(
+                    tool,
+                    Some(100), // timeout < 300 (max)
+                    None,
+                    Some(500), // output_head_lines < 1000 (max)
+                    None,
+                    None,
+                )
+                .is_ok()
+        );
     }
 
     #[test]
@@ -439,9 +446,11 @@ default_output_head_lines_max = 1000
         let tool = registry.get_tool("test_group_test_tool").unwrap();
 
         // No overrides (all None)
-        assert!(registry
-            .validate_runtime_overrides(tool, None, None, None, None, None,)
-            .is_ok());
+        assert!(
+            registry
+                .validate_runtime_overrides(tool, None, None, None, None, None,)
+                .is_ok()
+        );
     }
 
     #[test]

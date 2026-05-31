@@ -3,11 +3,11 @@
 // Binary crate for genmcp - uses library crate
 
 use axum::{
-    extract::{ws::WebSocketUpgrade, State},
+    Router,
+    extract::{State, ws::WebSocketUpgrade},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
-    Router,
 };
 use clap::{Parser, Subcommand, ValueEnum};
 use futures_util::{SinkExt, StreamExt};
@@ -124,9 +124,7 @@ async fn main() -> Result<()> {
         }
         Commands::Config { command } => match command {
             ConfigCommands::Schema => genmcp::config_schema::output_generated_schema()?,
-            ConfigCommands::Example => {
-                genmcp::config_schema::output_generated_example_config()?
-            }
+            ConfigCommands::Example => genmcp::config_schema::output_generated_example_config()?,
             ConfigCommands::Docs { curated } => {
                 if curated {
                     genmcp::config_schema::output_docs_curated()?
@@ -271,14 +269,15 @@ async fn websocket_handler(
     // Authenticate WebSocket connection if enabled
     if let Some(ref auth) = jwt_config {
         if auth.enabled
-            && let Err(e) = validate_jwt_token(&headers, auth, jwks_verifier.as_deref()).await {
-                eprintln!("WebSocket authentication failed: {}", e);
-                return (
-                    StatusCode::UNAUTHORIZED,
-                    format!("Authentication failed: {}", e),
-                )
-                    .into_response();
-            }
+            && let Err(e) = validate_jwt_token(&headers, auth, jwks_verifier.as_deref()).await
+        {
+            eprintln!("WebSocket authentication failed: {}", e);
+            return (
+                StatusCode::UNAUTHORIZED,
+                format!("Authentication failed: {}", e),
+            )
+                .into_response();
+        }
         // If auth is disabled, allow connection without authentication
     } else {
         // No auth config means authentication is disabled
@@ -318,10 +317,11 @@ async fn handle_websocket_connection(
                 // Send response if present
                 if let Some(resp) = response
                     && let Ok(resp_str) = serde_json::to_string(&resp)
-                        && let Err(e) = sender.send(Message::Text(resp_str.into())).await {
-                            eprintln!("Error sending WebSocket response: {}", e);
-                            break;
-                        }
+                    && let Err(e) = sender.send(Message::Text(resp_str.into())).await
+                {
+                    eprintln!("Error sending WebSocket response: {}", e);
+                    break;
+                }
             }
             Ok(Message::Close(_)) => {
                 break;
@@ -457,17 +457,18 @@ async fn handle_jsonrpc_message(
                 match server.handle_tool_call(name, arguments).await {
                     Ok(exec_result) => {
                         // Always include STDERR in the response, even if empty
-                        let mut response_text = format!("Exit code: {}\n\nSTDOUT:\n{}", 
-                            exec_result.exit_code,
-                            exec_result.stdout);
-                        
+                        let mut response_text = format!(
+                            "Exit code: {}\n\nSTDOUT:\n{}",
+                            exec_result.exit_code, exec_result.stdout
+                        );
+
                         // Always show STDERR section, even if empty
                         if exec_result.stderr.is_empty() {
                             response_text.push_str("\n\nSTDERR:\n(no output)");
                         } else {
                             response_text.push_str(&format!("\n\nSTDERR:\n{}", exec_result.stderr));
                         }
-                        
+
                         Ok(serde_json::json!({
                             "content": [{
                                 "type": "text",
@@ -475,7 +476,7 @@ async fn handle_jsonrpc_message(
                             }],
                             "isError": exec_result.exit_code != 0 && !exec_result.stopped_after,
                         }))
-                    },
+                    }
                     Err(e) => Err(e),
                 }
             } else {

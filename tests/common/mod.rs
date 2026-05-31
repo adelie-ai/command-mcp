@@ -79,7 +79,10 @@ pub async fn wait_for_tcp_connect(host: &str, port: u16, timeout: Duration) {
             }
             Err(_) => {
                 if tokio::time::Instant::now() >= deadline {
-                    panic!("timed out waiting for {}:{} to accept TCP connections", host, port);
+                    panic!(
+                        "timed out waiting for {}:{} to accept TCP connections",
+                        host, port
+                    );
                 }
                 tokio::time::sleep(Duration::from_millis(25)).await;
             }
@@ -167,4 +170,3 @@ impl Drop for ChildGuard {
         let _ = self.child.start_kill();
     }
 }
-
