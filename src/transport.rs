@@ -139,7 +139,9 @@ impl StdioTransportHandler {
                 // We already consumed the Content-Length header line; stash it and
                 // proceed as content-length framed.
                 self.framing = StdioFraming::ContentLength;
-                return self.read_message_content_length_with_first_line(line_trimmed).await;
+                return self
+                    .read_message_content_length_with_first_line(line_trimmed)
+                    .await;
             }
 
             // Treat as newline-delimited JSON.
@@ -160,7 +162,8 @@ impl StdioTransportHandler {
             return Err(TransportError::ConnectionClosed.into());
         }
         let first = trim_crlf(&first);
-        self.read_message_content_length_with_first_line(first).await
+        self.read_message_content_length_with_first_line(first)
+            .await
     }
 
     async fn read_message_content_length_with_first_line(&mut self, first: &str) -> Result<String> {
@@ -208,10 +211,19 @@ mod tests {
 
     #[test]
     fn test_parse_content_length_header() {
-        assert_eq!(parse_content_length_header("Content-Length: 10\r\n"), Some(10));
+        assert_eq!(
+            parse_content_length_header("Content-Length: 10\r\n"),
+            Some(10)
+        );
         assert_eq!(parse_content_length_header("content-length: 0\n"), Some(0));
-        assert_eq!(parse_content_length_header("Content-Length:   42"), Some(42));
-        assert_eq!(parse_content_length_header("Content-Type: application/json"), None);
+        assert_eq!(
+            parse_content_length_header("Content-Length:   42"),
+            Some(42)
+        );
+        assert_eq!(
+            parse_content_length_header("Content-Type: application/json"),
+            None
+        );
         assert_eq!(parse_content_length_header("nope"), None);
     }
 

@@ -177,9 +177,7 @@ fn render_markdown_docs_from_schema(root: &RootSchema) -> String {
     out.push_str("## Quick commands\n\n");
     out.push_str("- `genmcp config schema` (generated JSON Schema)\n");
     out.push_str("- `genmcp config example` (curated example TOML)\n");
-    out.push_str(
-        "- `genmcp config example` (struct-synced TOML example; no comments)\n",
-    );
+    out.push_str("- `genmcp config example` (struct-synced TOML example; no comments)\n");
     out.push_str("- `genmcp config docs --curated` (hand-written docs)\n\n");
 
     out.push_str("## Top-level keys\n\n");

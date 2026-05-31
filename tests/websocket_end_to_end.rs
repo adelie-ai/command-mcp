@@ -9,17 +9,16 @@ use common::{
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use std::time::Duration;
+use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::HeaderValue;
-use tokio_tungstenite::tungstenite::Message;
 
-async fn ws_connect(port: u16, authorization: Option<&str>) -> tokio_tungstenite::WebSocketStream<
-    tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-> {
+async fn ws_connect(
+    port: u16,
+    authorization: Option<&str>,
+) -> tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>> {
     let url = format!("ws://127.0.0.1:{}/ws", port);
-    let mut req = url
-        .into_client_request()
-        .expect("create websocket request");
+    let mut req = url.into_client_request().expect("create websocket request");
 
     if let Some(auth) = authorization {
         req.headers_mut().insert(
@@ -130,7 +129,11 @@ async fn run_mcp_over_ws(
         .and_then(|c0| c0.get("text"))
         .and_then(|t| t.as_str())
         .expect("tool call response text");
-    assert!(text.contains("hello websocket"), "unexpected content: {}", text);
+    assert!(
+        text.contains("hello websocket"),
+        "unexpected content: {}",
+        text
+    );
 }
 
 #[tokio::test]
@@ -154,9 +157,7 @@ async fn websocket_auth_enabled_rejects_missing_authorization_header() {
     wait_for_tcp_connect("127.0.0.1", port, Duration::from_secs(3)).await;
 
     let url = format!("ws://127.0.0.1:{}/ws", port);
-    let req = url
-        .into_client_request()
-        .expect("create websocket request");
+    let req = url.into_client_request().expect("create websocket request");
     let err = tokio_tungstenite::connect_async(req)
         .await
         .expect_err("expected 401 Unauthorized");
@@ -208,9 +209,7 @@ async fn websocket_auth_enabled_rejects_bad_token() {
     wait_for_tcp_connect("127.0.0.1", port, Duration::from_secs(3)).await;
 
     let url = format!("ws://127.0.0.1:{}/ws", port);
-    let mut req = url
-        .into_client_request()
-        .expect("create websocket request");
+    let mut req = url.into_client_request().expect("create websocket request");
     req.headers_mut().insert(
         "authorization",
         HeaderValue::from_static("Bearer not-a-real-jwt"),
@@ -226,5 +225,3 @@ async fn websocket_auth_enabled_rejects_bad_token() {
         s
     );
 }
-
-

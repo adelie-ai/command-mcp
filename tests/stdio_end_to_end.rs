@@ -28,7 +28,7 @@ async fn read_json_line(stdout: &mut BufReader<tokio::process::ChildStdout>) -> 
 
 async fn write_json_content_length(stdin: &mut tokio::process::ChildStdin, msg: &Value) {
     let s = serde_json::to_string(msg).expect("serialize json");
-    let header = format!("Content-Length: {}\r\n\r\n", s.as_bytes().len());
+    let header = format!("Content-Length: {}\r\n\r\n", s.len());
     stdin
         .write_all(header.as_bytes())
         .await
@@ -53,10 +53,10 @@ async fn read_json_content_length(stdout: &mut BufReader<tokio::process::ChildSt
         if line.is_empty() {
             break;
         }
-        if let Some((name, value)) = line.split_once(':') {
-            if name.trim().eq_ignore_ascii_case("content-length") {
-                content_length = Some(value.trim().parse::<usize>().expect("parse content length"));
-            }
+        if let Some((name, value)) = line.split_once(':')
+            && name.trim().eq_ignore_ascii_case("content-length")
+        {
+            content_length = Some(value.trim().parse::<usize>().expect("parse content length"));
         }
     }
     let len = content_length.expect("missing Content-Length header");
@@ -211,5 +211,3 @@ async fn stdio_end_to_end_content_length_framing_initialize_and_tool_call() {
         text
     );
 }
-
-

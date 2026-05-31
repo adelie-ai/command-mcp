@@ -5,7 +5,7 @@
 
 use crate::config::Config;
 use crate::error::{McpError, Result};
-use crate::executor::{execute_command, ExecutionResult};
+use crate::executor::{ExecutionResult, execute_command};
 use crate::tools::ToolRegistry;
 use serde_json::Value;
 use std::sync::Arc;
@@ -693,7 +693,15 @@ newlines" test"#;
         let args = parse_shell_args(docker_args).unwrap();
         assert_eq!(
             args,
-            vec!["run", "--name", "my-container", "-p", "8080:80", "-d", "nginx:latest"]
+            vec![
+                "run",
+                "--name",
+                "my-container",
+                "-p",
+                "8080:80",
+                "-d",
+                "nginx:latest"
+            ]
         );
     }
 
@@ -704,7 +712,14 @@ newlines" test"#;
         let args = parse_shell_args(docker_args).unwrap();
         assert_eq!(
             args,
-            vec!["run", "--name", "my container", "-e", "NODE_ENV=production", "nginx:latest"]
+            vec![
+                "run",
+                "--name",
+                "my container",
+                "-e",
+                "NODE_ENV=production",
+                "nginx:latest"
+            ]
         );
     }
 

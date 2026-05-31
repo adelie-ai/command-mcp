@@ -83,21 +83,22 @@ pub async fn execute_command(
 
     // Handle stop_after if configured
     if let Some(stop_after) = stop_after_secs
-        && stop_after > 0 {
-            return handle_stop_after(
-                child,
-                stdout_task,
-                stderr_task,
-                stop_after,
-                termination_signal,
-                termination_grace_period,
-                output_head_lines,
-                output_tail_lines,
-                stderr_lines,
-                command,
-            )
-            .await;
-        }
+        && stop_after > 0
+    {
+        return handle_stop_after(
+            child,
+            stdout_task,
+            stderr_task,
+            stop_after,
+            termination_signal,
+            termination_grace_period,
+            output_head_lines,
+            output_tail_lines,
+            stderr_lines,
+            command,
+        )
+        .await;
+    }
 
     // Handle timeout
     let timeout_duration = Duration::from_secs(timeout_secs);
@@ -332,7 +333,7 @@ fn get_last_n_lines(stderr: &str, n: u64) -> String {
 async fn terminate_process(pid: u32, signal: TerminationSignal, grace_period: u64) {
     #[cfg(unix)]
     {
-        use nix::sys::signal::{kill, Signal};
+        use nix::sys::signal::{Signal, kill};
         use nix::unistd::Pid;
 
         let nix_signal = match signal {
@@ -358,7 +359,7 @@ async fn terminate_process(pid: u32, signal: TerminationSignal, grace_period: u6
 async fn force_kill_process(pid: u32) {
     #[cfg(unix)]
     {
-        use nix::sys::signal::{kill, Signal};
+        use nix::sys::signal::{Signal, kill};
         use nix::unistd::Pid;
         let _ = kill(Pid::from_raw(pid as i32), Some(Signal::SIGKILL));
     }
@@ -614,7 +615,7 @@ mod tests {
     #[tokio::test]
     async fn test_stderr_line_limiting() {
         // Verify STDERR line limiting is applied consistently
-        let stderr_lines = vec![
+        let stderr_lines = [
             "error line 1",
             "error line 2",
             "error line 3",
@@ -622,12 +623,16 @@ mod tests {
             "error line 5",
         ];
         let stderr_content = stderr_lines.join("\n");
-        
+
         let result = execute_command(
             "/bin/sh",
             &[
                 "-c".to_string(),
-                format!("echo 'stdout' >&1 && echo '{}' >&2 && exit 1", stderr_content).to_string(),
+                format!(
+                    "echo 'stdout' >&1 && echo '{}' >&2 && exit 1",
+                    stderr_content
+                )
+                .to_string(),
             ],
             10,
             None,
