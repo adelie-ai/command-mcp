@@ -1,10 +1,10 @@
 # Configuration Reference
 
-Complete reference for the genmcp configuration file format.
+Complete reference for the gen-mcp configuration file format.
 
 ## Overview
 
-The genmcp configuration file uses TOML format and organizes tools into functional groups. Groups provide default values that tools inherit, and tools can override these defaults. MAX values prevent LLMs from exceeding resource limits.
+The gen-mcp configuration file uses TOML format and organizes tools into functional groups. Groups provide default values that tools inherit, and tools can override these defaults. MAX values prevent LLMs from exceeding resource limits.
 
 ## File Structure
 

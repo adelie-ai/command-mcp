@@ -1,13 +1,13 @@
-# Contributing to genmcp
+# Contributing to gen-mcp
 
-Thank you for your interest in contributing to genmcp! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to gen-mcp! This document provides guidelines and instructions for contributing.
 
 ## Development Setup
 
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd genmcp
+   cd gen-mcp
    ```
 
 2. **Build the project**
@@ -177,5 +177,5 @@ Thank you for your interest in contributing to genmcp! This document provides gu
 
 If you have questions about contributing, please open an issue or start a discussion.
 
-Thank you for contributing to genmcp!
+Thank you for contributing to gen-mcp!
 

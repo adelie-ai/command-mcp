@@ -6,7 +6,6 @@
 use crate::error::Result;
 use schemars::schema::{InstanceType, RootSchema, Schema, SchemaObject, SingleOrVec};
 use schemars::schema_for;
-use std::collections::HashMap;
 
 /// Output generated JSON Schema for the TOML configuration structure.
 pub fn output_generated_schema() -> Result<()> {
@@ -23,76 +22,75 @@ pub fn output_example_config() -> Result<()> {
     output_generated_example_config()
 }
 
-/// Output a minimal TOML configuration file generated from the Rust config structures.
+/// Output a minimal, modern TOML configuration file.
 ///
-/// This output is intentionally "mechanical" (no comments) but stays in sync with the
-/// Rust structures: if you add a new required field, this code must be updated to compile.
+/// The example is deliberately short and copy-pasteable: a couple of realistic
+/// tools that lean on group/global defaults instead of repeating the per-tool
+/// override knobs, and that showcase the modern parameter features (`type`,
+/// `default`, `enum`, a flagged param) plus the `output = "json"` tool format.
 pub fn output_generated_example_config() -> Result<()> {
-    let config = build_generated_example();
-    println!("{}", toml::to_string_pretty(&config)?);
+    print!("{EXAMPLE_CONFIG_TOML}");
     Ok(())
 }
 
-fn build_generated_example() -> crate::config::ConfigToml {
-    use crate::config::{ConfigToml, Group, Parameter, Tool};
+/// A minimal, modern, copy-pasteable example config.
+///
+/// It leans on group defaults instead of repeating the per-tool override knobs,
+/// and showcases the modern parameter features: `type`, `default`, `enum`,
+/// numeric `minimum`, a flagged param, and a tool with `output = "json"`. Every
+/// per-tool/per-parameter override is optional with a back-compat default, so
+/// the example stays short. `cargo test` asserts this string parses.
+const EXAMPLE_CONFIG_TOML: &str = r#"# gen-mcp example config. Generate with: gen-mcp config example > config.toml
+#
+# Tools are grouped; the group's `default_*` keys supply timeouts/output limits
+# so individual tools stay clean. See `gen-mcp config schema` for every field.
 
-    let mut parameters = HashMap::new();
-    parameters.insert(
-        "text".to_string(),
-        Parameter {
-            description: "Text to print".to_string(),
-            example: Some("hello from genmcp".to_string()),
-            flag: None,
-            takes_value: false,
-            required: true,
-            split_args: false,
-        },
-    );
+# Advertise the runtime-override knobs (timeout, stop_after, output_*_lines,
+# stderr_lines) in each tool's input schema. They are honored either way; this
+# only controls whether clients see them. Defaults to false.
+expose_runtime_overrides = false
 
-    let tool = Tool {
-        name: "echo".to_string(),
-        description: "Example tool: echo text (replace with your real command)".to_string(),
-        command: "/bin/echo".to_string(),
-        arg_order: Some(vec!["text".to_string()]),
-        timeout: Some(30),
-        timeout_max: Some(300),
-        stop_after: None,
-        stop_after_max: None,
-        termination_signal: Some("SIGTERM".to_string()),
-        termination_grace_period: Some(3),
-        output_head_lines: Some(200),
-        output_tail_lines: Some(200),
-        output_head_lines_max: Some(2000),
-        output_tail_lines_max: Some(2000),
-        stderr_lines: Some(200),
-        stderr_lines_max: Some(2000),
-        parameters,
-    };
+[groups.files]
+default_timeout = 30
+default_timeout_max = 300
+default_output_head_lines = 100
+default_output_tail_lines = 100
 
-    let group = Group {
-        default_timeout: Some(30),
-        default_timeout_max: Some(300),
-        default_stop_after: None,
-        default_stop_after_max: None,
-        default_termination_signal: Some("SIGTERM".to_string()),
-        default_termination_grace_period: Some(3),
-        default_output_head_lines: Some(200),
-        default_output_tail_lines: Some(200),
-        default_output_head_lines_max: Some(2000),
-        default_output_tail_lines_max: Some(2000),
-        default_stderr_lines: Some(200),
-        default_stderr_lines_max: Some(2000),
-        tools: vec![tool],
-    };
+  # A tool with a typed, defaulted, flagged parameter.
+  [[groups.files.tools]]
+  name = "head"
+  description = "Print the first lines of a file"
+  command = "/usr/bin/head"
+  arg_order = ["lines", "file"]
 
-    let mut groups = HashMap::new();
-    groups.insert("example".to_string(), group);
+    [groups.files.tools.parameters.lines]
+    description = "Number of lines to print"
+    type = "integer"      # string | integer | number | boolean | enum (default: inferred)
+    default = 10
+    minimum = 1
+    flag = "-n"           # emitted as: -n <lines>
+    takes_value = true
 
-    ConfigToml {
-        groups,
-        websocket_auth: None,
-    }
-}
+    [groups.files.tools.parameters.file]
+    description = "Path to the file to read"
+    required = true       # positional argument
+
+  # A tool that returns structured JSON (parsed from stdout) and uses an enum.
+  [[groups.files.tools]]
+  name = "list"
+  description = "List items in a known format"
+  command = "/usr/bin/mylister"
+  output = "json"         # text (default) | json
+  arg_order = ["format"]
+
+    [groups.files.tools.parameters.format]
+    description = "Output format"
+    type = "enum"
+    enum = ["json", "yaml"]
+    default = "json"
+    flag = "--format"
+    takes_value = true
+"#;
 
 /// Output Markdown documentation generated from the Rust config structures (stays in sync).
 pub fn output_docs_generated() -> Result<()> {
@@ -104,11 +102,19 @@ pub fn output_docs_generated() -> Result<()> {
 
 /// Output Markdown documentation for the configuration file format (hand-written).
 pub fn output_docs_curated() -> Result<()> {
-    let docs = r#"# genmcp Configuration Schema
+    let docs = r#"# gen-mcp Configuration Schema
 
 ## Overview
 
-The genmcp configuration file uses TOML format and organizes tools into groups.
+The gen-mcp configuration file uses TOML format and organizes tools into groups.
+
+## Top-level keys
+
+- `expose_runtime_overrides` (optional, boolean): Advertise the runtime-override
+  knobs (`timeout`, `stop_after`, `output_head_lines`, `output_tail_lines`,
+  `stderr_lines`) in every tool's input schema. Defaults to `false`. The
+  overrides are always honored when a client sends them; this only controls
+  whether they appear in the schema.
 
 ## Group Configuration
 
@@ -134,6 +140,7 @@ Each tool can override group defaults:
 - `name`: Base tool name (final name: `{group_name}_{tool_name}`)
 - `description`: Description for LLM
 - `command`: Command to execute
+- `output` (optional): `text` (default — classic "Exit code / STDOUT / STDERR" block) or `json` (parse stdout as JSON on success and return it as `structuredContent`; falls back to text on a parse failure or non-zero exit)
 - `arg_order` (optional): Explicit parameter evaluation order when building CLI args
 - `timeout`, `timeout_max`: Override group timeout settings
 - `stop_after`, `stop_after_max`: Override group stop_after settings
@@ -148,6 +155,10 @@ Each tool can override group defaults:
 
 Each parameter has:
 - `description`: Parameter description
+- `type` (optional): JSON Schema type advertised to the client — `string`, `integer`, `number`, `boolean`, or `enum`. Defaults to inference (flag-only → `boolean`, otherwise `string`). Orthogonal to the CLI emission knobs below.
+- `enum` (optional, list of strings): Allowed values; emits a JSON Schema `enum` constraint (use with `type = "enum"`)
+- `default` (optional): Default value advertised in the schema
+- `minimum` / `maximum` (optional, numbers): Numeric bounds advertised in the schema
 - `example`: Example value (optional)
 - `flag` (optional): Emit this CLI flag when the parameter is provided (e.g. `-r`, `-n`)
 - `takes_value` (optional, boolean): If `true`, emit `flag` followed by the parameter value (e.g. `-n 50`)
@@ -172,15 +183,15 @@ Optional `[websocket_auth]` section for WebSocket mode:
 fn render_markdown_docs_from_schema(root: &RootSchema) -> String {
     let mut out = String::new();
 
-    out.push_str("# genmcp Configuration (generated)\n\n");
+    out.push_str("# gen-mcp Configuration (generated)\n\n");
     out.push_str(
         "This documentation is generated from the Rust configuration structs (field doc comments + schema), so it stays in sync with the running binary.\n\n",
     );
     out.push_str("## Quick commands\n\n");
-    out.push_str("- `genmcp config schema` (generated JSON Schema)\n");
-    out.push_str("- `genmcp config example` (curated example TOML)\n");
-    out.push_str("- `genmcp config example` (struct-synced TOML example; no comments)\n");
-    out.push_str("- `genmcp config docs --curated` (hand-written docs)\n\n");
+    out.push_str("- `gen-mcp config schema` (generated JSON Schema)\n");
+    out.push_str("- `gen-mcp config example` (minimal example TOML)\n");
+    out.push_str("- `gen-mcp config docs` (generated docs)\n");
+    out.push_str("- `gen-mcp config docs --curated` (hand-written docs)\n\n");
 
     out.push_str("## Top-level keys\n\n");
     if let Some(obj) = root.schema.object.as_ref() {
@@ -374,6 +385,42 @@ mod tests {
         assert!(s.contains("\"jwks_url\""));
         assert!(s.contains("SIGTERM"));
         assert!(s.contains("SIGINT"));
+        // New fields from the modernization are reflected in the schema.
+        assert!(s.contains("expose_runtime_overrides"));
+        assert!(s.contains("\"minimum\""));
+        assert!(s.contains("\"maximum\""));
+        assert!(s.contains("ParamType"));
+        assert!(s.contains("OutputFormat"));
+    }
+
+    #[test]
+    fn test_example_config_parses_and_uses_new_fields() {
+        use crate::config::{OutputFormat, ParamType};
+
+        // The published example must always parse.
+        let config = crate::config::Config::from_str(EXAMPLE_CONFIG_TOML)
+            .expect("example config must parse");
+        assert!(!config.expose_runtime_overrides);
+
+        let group = config.groups.get("files").expect("files group");
+        let list = group
+            .tools
+            .iter()
+            .find(|t| t.name == "list")
+            .expect("list tool");
+        assert_eq!(list.output, OutputFormat::Json);
+
+        let head = group
+            .tools
+            .iter()
+            .find(|t| t.name == "head")
+            .expect("head tool");
+        assert_eq!(head.parameters["lines"].param_type, ParamType::Integer);
+        assert_eq!(head.parameters["lines"].minimum, Some(1.0));
+        assert_eq!(
+            list.parameters["format"].r#enum.as_deref(),
+            Some(["json".to_string(), "yaml".to_string()].as_slice())
+        );
     }
 
     #[test]

@@ -1,13 +1,13 @@
 # Deployment Guide
 
-Guide for deploying genmcp in various environments.
+Guide for deploying gen-mcp in various environments.
 
 ## Docker Deployment
 
 ### Building the Image
 
 ```bash
-docker build -t genmcp .
+docker build -t gen-mcp .
 ```
 
 ### Running in STDIN/STDOUT Mode
@@ -15,13 +15,13 @@ docker build -t genmcp .
 For VS Code integration or other stdio-based MCP clients:
 
 ```bash
-docker run -i genmcp serve --mode stdio
+docker run -i gen-mcp serve --mode stdio
 ```
 
 ### Running in WebSocket Mode
 
 ```bash
-docker run -p 8080:8080 genmcp serve \
+docker run -p 8080:8080 gen-mcp serve \
   --mode websocket \
   --port 8080 \
   --host 0.0.0.0
@@ -34,12 +34,12 @@ Mount your configuration file:
 ```bash
 docker run -i -v /path/to/config.toml:/app/config.toml \
   -e GENMCP_CONFIG=/app/config.toml \
-  genmcp serve --mode stdio
+  gen-mcp serve --mode stdio
 ```
 
 ### Environment Variables
 
-The Docker image runs as a non-root user (`genmcp`, UID 1000) for security.
+The Docker image runs as a non-root user (`gen-mcp`, UID 1000) for security.
 
 ## Bare Metal Installation
 
@@ -52,40 +52,40 @@ The Docker image runs as a non-root user (`genmcp`, UID 1000) for security.
 
 ```bash
 git clone <repository-url>
-cd genmcp
+cd gen-mcp
 cargo build --release
 ```
 
-The binary will be at `target/release/genmcp`.
+The binary will be at `target/release/gen-mcp`.
 
 ### Installation
 
 ```bash
 # Install to /usr/local/bin
-sudo cp target/release/genmcp /usr/local/bin/
+sudo cp target/release/gen-mcp /usr/local/bin/
 
 # Or install to user directory
-cp target/release/genmcp ~/.local/bin/
+cp target/release/gen-mcp ~/.local/bin/
 ```
 
 ### Running
 
-`genmcp` uses the same TOML configuration for both transports. The transport is selected at runtime with `--mode`:
+`gen-mcp` uses the same TOML configuration for both transports. The transport is selected at runtime with `--mode`:
 
 - `--mode stdio` (default): STDIN/STDOUT transport (typical for VS Code integration)
 - `--mode websocket`: WebSocket transport (typical for hosted deployments)
 
 ```bash
 # STDIN/STDOUT mode
-genmcp serve --config /path/to/config.toml --mode stdio
+gen-mcp serve --config /path/to/config.toml --mode stdio
 
 # WebSocket mode
-genmcp serve --config /path/to/config.toml --mode websocket --port 8080
+gen-mcp serve --config /path/to/config.toml --mode websocket --port 8080
 ```
 
 ## Systemd Service
 
-Create `/etc/systemd/system/genmcp.service`:
+Create `/etc/systemd/system/gen-mcp.service`:
 
 ```ini
 [Unit]
@@ -94,10 +94,10 @@ After=network.target
 
 [Service]
 Type=simple
-User=genmcp
-WorkingDirectory=/opt/genmcp
-ExecStart=/usr/local/bin/genmcp serve \
-  --config /opt/genmcp/config.toml \
+User=gen-mcp
+WorkingDirectory=/opt/gen-mcp
+ExecStart=/usr/local/bin/gen-mcp serve \
+  --config /opt/gen-mcp/config.toml \
   --mode websocket \
   --port 8080
 Restart=on-failure
@@ -110,8 +110,8 @@ WantedBy=multi-user.target
 Enable and start:
 
 ```bash
-sudo systemctl enable genmcp
-sudo systemctl start genmcp
+sudo systemctl enable gen-mcp
+sudo systemctl start gen-mcp
 ```
 
 ## VS Code Integration
@@ -121,8 +121,8 @@ Configure in VS Code settings:
 ```json
 {
   "mcp.servers": {
-    "genmcp": {
-      "command": "genmcp",
+    "gen-mcp": {
+      "command": "gen-mcp",
       "args": ["serve", "--config", "/path/to/config.toml", "--mode", "stdio"]
     }
   }
@@ -166,7 +166,7 @@ ws.onopen = () => {
 Ensure the binary and configuration file have appropriate permissions:
 
 ```bash
-chmod +x genmcp
+chmod +x gen-mcp
 chmod 644 config.toml
 ```
 
@@ -175,7 +175,7 @@ chmod 644 config.toml
 Change the port:
 
 ```bash
-genmcp serve --config config.toml --mode websocket --port 8081
+gen-mcp serve --config config.toml --mode websocket --port 8081
 ```
 
 ### Configuration Errors
@@ -183,7 +183,7 @@ genmcp serve --config config.toml --mode websocket --port 8081
 Validate configuration:
 
 ```bash
-genmcp config example > /tmp/config.toml
+gen-mcp config example > /tmp/config.toml
 # Compare with your config
 ```
 

@@ -1,11 +1,11 @@
 #![deny(warnings)]
 #![allow(dead_code)] // Error types will be used as modules are implemented
 
-// Error types for the genmcp crate
+// Error types for the gen-mcp crate
 
 use thiserror::Error;
 
-/// Main error type for the genmcp application
+/// Main error type for the gen-mcp application
 #[derive(Error, Debug)]
 pub enum GenMcpError {
     /// Configuration parsing or validation errors

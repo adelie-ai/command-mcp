@@ -1,6 +1,6 @@
 # Example Configurations
 
-This directory contains example configuration files demonstrating various use cases for genmcp.
+This directory contains example configuration files demonstrating various use cases for gen-mcp.
 
 ## Configuration Files
 
@@ -55,29 +55,29 @@ secret = "your-secret-key-here"
 **CLI Override:**
 The `--jwt-secret` CLI option takes precedence over the config file:
 ```bash
-genmcp serve --config config.toml --mode websocket --jwt-secret "cli-secret"
+gen-mcp serve --config config.toml --mode websocket --jwt-secret "cli-secret"
 ```
 
 ## Usage Examples
 
 ### Running with STDIN/STDOUT (VS Code)
 ```bash
-genmcp serve --config examples/just_with_auth.toml --mode stdio
+gen-mcp serve --config examples/just_with_auth.toml --mode stdio
 ```
 
 ### Running with WebSocket (no auth for development)
 ```bash
-genmcp serve --config examples/just_config.toml --mode websocket --port 8080
+gen-mcp serve --config examples/just_config.toml --mode websocket --port 8080
 ```
 
 ### Running with WebSocket (with JWT auth)
 ```bash
-genmcp serve --config examples/just_with_auth.toml --mode websocket --port 8080
+gen-mcp serve --config examples/just_with_auth.toml --mode websocket --port 8080
 ```
 
 ### Overriding JWT secret via CLI
 ```bash
-genmcp serve --config examples/just_with_auth.toml --mode websocket --jwt-secret "$JWT_SECRET"
+gen-mcp serve --config examples/just_with_auth.toml --mode websocket --jwt-secret "$JWT_SECRET"
 ```
 
 ## Generating Secure Secrets

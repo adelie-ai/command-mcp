@@ -1,7 +1,7 @@
 // Integration tests for end-to-end tool execution through the gen-mcp service.
 
-use genmcp::config::Config;
-use genmcp::service::GenMcpService;
+use gen_mcp::config::Config;
+use gen_mcp::service::GenMcpService;
 use mcp_core::{CallError, Content, McpService};
 
 fn service_for(toml: &str) -> GenMcpService {

@@ -1,8 +1,8 @@
 // Integration tests for the MCP handshake, driven through mcp-core's Session
 // (which now owns the JSON-RPC protocol) wrapping gen-mcp's dynamic service.
 
-use genmcp::config::Config;
-use genmcp::service::GenMcpService;
+use gen_mcp::config::Config;
+use gen_mcp::service::GenMcpService;
 use mcp_core::{ServerConfig, ServerCore, Session};
 use serde_json::json;
 use std::sync::Arc;
@@ -11,7 +11,7 @@ fn session_for(toml: &str) -> Session {
     let config = Config::from_str(toml).unwrap();
     let service = GenMcpService::new(config).unwrap();
     let core = ServerCore::new(
-        ServerConfig::new("genmcp", env!("CARGO_PKG_VERSION")),
+        ServerConfig::new("gen-mcp", env!("CARGO_PKG_VERSION")),
         Arc::new(service),
     );
     Session::new(core)
@@ -44,7 +44,7 @@ default_timeout = 30
         .await;
     let result = &init.response.unwrap()["result"];
     assert_eq!(result["protocolVersion"], "2024-11-05");
-    assert_eq!(result["serverInfo"]["name"], "genmcp");
+    assert_eq!(result["serverInfo"]["name"], "gen-mcp");
     assert!(
         result.get("tools").is_none(),
         "initialize must not embed a top-level tools key"
