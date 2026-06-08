@@ -6,7 +6,5 @@ pub mod config;
 pub mod config_schema;
 pub mod error;
 pub mod executor;
-pub mod oidc;
-pub mod server;
+pub mod service;
 pub mod tools;
-pub mod transport;

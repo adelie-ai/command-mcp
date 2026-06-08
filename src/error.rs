@@ -28,9 +28,9 @@ pub enum GenMcpError {
     #[error("MCP protocol error: {0}")]
     Mcp(#[from] McpError),
 
-    /// Transport layer errors
-    #[error("Transport error: {0}")]
-    Transport(#[from] TransportError),
+    /// Errors surfaced by the mcp-core server runtime (transport, serving).
+    #[error("server error: {0}")]
+    Server(#[from] mcp_core::Error),
 
     /// Tool registry errors
     #[error("Tool registry error: {0}")]
@@ -118,56 +118,14 @@ pub enum ExecutionError {
     InvalidArguments(String),
 }
 
-/// MCP protocol errors
+/// MCP-domain errors raised while preparing a tool call. Protocol/transport
+/// concerns (version negotiation, JSON-RPC dispatch, framing, websocket auth)
+/// now live in mcp-core; only domain-level faults remain here.
 #[derive(Error, Debug)]
 pub enum McpError {
-    /// Invalid protocol version
-    #[error("Unsupported protocol version: {0}")]
-    InvalidProtocolVersion(String),
-
-    /// Invalid JSON-RPC message
-    #[error("Invalid JSON-RPC message: {0}")]
-    InvalidJsonRpc(String),
-
-    /// Missing required capability
-    #[error("Missing required capability: {0}")]
-    MissingCapability(String),
-
-    /// Tool not found
-    #[error("Tool not found: {0}")]
-    ToolNotFound(String),
-
-    /// Invalid tool parameters
-    #[error("Invalid tool parameters: {0}")]
-    InvalidToolParameters(String),
-
     /// Runtime override exceeds MAX value
     #[error("Runtime override '{field}' ({value}) exceeds MAX value ({max})")]
     OverrideExceedsMax { field: String, value: u64, max: u64 },
-}
-
-/// Transport layer errors
-#[derive(Error, Debug)]
-pub enum TransportError {
-    /// WebSocket connection error
-    #[error("WebSocket connection error: {0}")]
-    WebSocket(String),
-
-    /// Authentication failed
-    #[error("Authentication failed: {0}")]
-    Authentication(String),
-
-    /// Invalid message format
-    #[error("Invalid message format: {0}")]
-    InvalidMessage(String),
-
-    /// Connection closed
-    #[error("Connection closed")]
-    ConnectionClosed,
-
-    /// IO error in transport
-    #[error("Transport IO error: {0}")]
-    Io(#[from] std::io::Error),
 }
 
 /// Tool registry errors

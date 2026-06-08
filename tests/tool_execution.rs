@@ -1,10 +1,22 @@
-// Integration tests for end-to-end tool execution
+// Integration tests for end-to-end tool execution through the gen-mcp service.
 
 use genmcp::config::Config;
-use genmcp::server::McpServer;
+use genmcp::service::GenMcpService;
+use mcp_core::{CallError, Content, McpService};
+
+fn service_for(toml: &str) -> GenMcpService {
+    GenMcpService::new(Config::from_str(toml).unwrap()).unwrap()
+}
+
+fn reply_text(content: &[Content]) -> String {
+    match &content[0] {
+        Content::Text(t) => t.clone(),
+        other => panic!("expected text content, got {other:?}"),
+    }
+}
 
 #[tokio::test]
-async fn test_tool_execution_through_server() {
+async fn test_tool_execution_through_service() {
     let toml = r#"
 [groups.test_group]
 default_timeout = 30
@@ -13,35 +25,25 @@ default_timeout = 30
   name = "echo"
   description = "Echo command"
   command = "/bin/echo"
-  
+
     [groups.test_group.tools.parameters.text]
     description = "Text to echo"
     required = true
 "#;
 
-    let config = Config::from_str(toml).unwrap();
-    let server = McpServer::new(config).unwrap();
-
-    // Initialize
-    server
-        .handle_initialize("2024-11-05", &serde_json::json!({}))
-        .await
-        .unwrap();
-    server.handle_initialized().await.unwrap();
-
-    // Execute tool
-    let result = server
-        .handle_tool_call(
+    let service = service_for(toml);
+    let reply = service
+        .call_tool(
             "test_group_echo",
-            &serde_json::json!({
-                "text": "integration test"
-            }),
+            &serde_json::json!({ "text": "integration test" }),
         )
         .await
         .unwrap();
 
-    assert_eq!(result.exit_code, 0);
-    assert!(result.stdout.contains("integration test"));
+    assert!(!reply.is_error);
+    let text = reply_text(&reply.content);
+    assert!(text.contains("Exit code: 0"));
+    assert!(text.contains("integration test"));
 }
 
 #[tokio::test]
@@ -59,28 +61,17 @@ default_output_head_lines_max = 1000
   command = "/bin/echo"
 "#;
 
-    let config = Config::from_str(toml).unwrap();
-    let server = McpServer::new(config).unwrap();
-
-    server
-        .handle_initialize("2024-11-05", &serde_json::json!({}))
-        .await
-        .unwrap();
-    server.handle_initialized().await.unwrap();
-
-    // Execute with runtime overrides
-    let result = server
-        .handle_tool_call(
+    let service = service_for(toml);
+    let reply = service
+        .call_tool(
             "test_group_echo",
-            &serde_json::json!({
-                "timeout": 60,
-                "output_head_lines": 50,
-            }),
+            &serde_json::json!({ "timeout": 60, "output_head_lines": 50 }),
         )
         .await
         .unwrap();
 
-    assert_eq!(result.exit_code, 0);
+    assert!(!reply.is_error);
+    assert!(reply_text(&reply.content).contains("Exit code: 0"));
 }
 
 #[tokio::test]
@@ -95,20 +86,30 @@ default_timeout = 30
   command = "/bin/false"
 "#;
 
-    let config = Config::from_str(toml).unwrap();
-    let server = McpServer::new(config).unwrap();
-
-    server
-        .handle_initialize("2024-11-05", &serde_json::json!({}))
-        .await
-        .unwrap();
-    server.handle_initialized().await.unwrap();
-
-    let result = server
-        .handle_tool_call("test_group_false", &serde_json::json!({}))
+    let service = service_for(toml);
+    let reply = service
+        .call_tool("test_group_false", &serde_json::json!({}))
         .await
         .unwrap();
 
-    // Command should fail (exit code != 0)
-    assert_ne!(result.exit_code, 0);
+    // A non-zero exit is surfaced as a tool-level error (isError content).
+    assert!(reply.is_error);
+}
+
+#[tokio::test]
+async fn test_unknown_tool_is_tool_error() {
+    let toml = r#"
+[groups.test_group]
+  [[groups.test_group.tools]]
+  name = "echo"
+  description = "Echo command"
+  command = "/bin/echo"
+"#;
+
+    let service = service_for(toml);
+    let err = service
+        .call_tool("does_not_exist", &serde_json::json!({}))
+        .await
+        .unwrap_err();
+    assert!(matches!(err, CallError::Tool(_)));
 }

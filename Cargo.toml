@@ -5,35 +5,26 @@ edition = "2024"
 license = "Apache-2.0"
 
 [dependencies]
-anyhow = "1.0"
-axum = { version = "0.8.8", features = ["ws"] }
-axum-extra = "0.12.5"
+# Shared MCP core: JSON-RPC dispatch, stdio/websocket/unix transports, the Clap
+# `serve` CLI, and (via the `auth` feature) websocket Bearer-token validation
+# (HS256 secret / JWKS / OIDC discovery). The `auth` feature implies `websocket`.
+mcp-core = { git = "https://github.com/adelie-ai/mcp-core", features = ["auth"] }
 clap = { version = "4.5.54", features = ["derive", "env"] }
-futures-util = "0.3.31"
-# Explicitly select a crypto provider: jsonwebtoken 10.3's default feature set
-# does not enable one, and we no longer pull aws-lc-rs transitively (it came in
-# via the now-removed rust-mcp-* deps). `rust_crypto` is pure-Rust, avoiding a
-# C toolchain dependency (helps the static/scratch container build).
-jsonwebtoken = { version = "10.2.0", default-features = false, features = ["rust_crypto", "use_pem"] }
-jwtk = "0.4"
 nix = { version = "0.30.1", features = ["process", "signal"] }
-# Temporary pin: native-tls 0.2.17 fails to compile on Rust 1.93 during
-# `cargo install --path .` due to non-exhaustive Protocol matching upstream.
-# Remove once upstream native-tls releases a fix and transitive deps pick it up.
-native-tls = "=0.2.14"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 schemars = { version = "0.8.22", features = ["derive"] }
-tempfile = "3.24"
 thiserror = "2.0.17"
 tokio = { version = "1.49", features = ["full"] }
 toml = "0.9.11"
-tower-http = "0.6.8"
-url = { version = "2.5", features = ["serde"] }
 
 [dev-dependencies]
+# Used by the websocket-auth integration test to mint HS256 tokens, by the
+# stdio/websocket end-to-end tests for temp configs, and by the websocket client.
+jsonwebtoken = { version = "10.2.0", default-features = false, features = ["rust_crypto", "use_pem"] }
+tempfile = "3.24"
 tokio-tungstenite = "0.26"
+futures-util = "0.3.31"
 
 [lints.rust]
 warnings = "deny"
