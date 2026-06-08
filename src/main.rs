@@ -1,6 +1,6 @@
 #![deny(warnings)]
 
-// Binary crate for genmcp — wires gen-mcp's dynamic, config-driven tools onto
+// Binary crate for gen-mcp — wires gen-mcp's dynamic, config-driven tools onto
 // the shared mcp-core protocol/transport/CLI. The JSON-RPC dispatch, framing,
 // transports, and websocket Bearer-token auth all come from mcp-core; this
 // binary owns only the CLI (which keeps gen-mcp's `config` helper subcommands
@@ -8,17 +8,17 @@
 // the TOML `[websocket_auth]` config to mcp-core's `WsAuth`.
 
 use clap::{Args, Parser, Subcommand};
-use genmcp::config::Config;
-use genmcp::error::Result;
-use genmcp::service::GenMcpService;
+use gen_mcp::config::Config;
+use gen_mcp::error::Result;
+use gen_mcp::service::GenMcpService;
 use mcp_core::{CommonServeArgs, ServerConfig, ServerCore, WsAuth};
 use std::sync::Arc;
 
 #[derive(Parser)]
-#[command(name = "genmcp")]
+#[command(name = "gen-mcp")]
 #[command(about = "Generic MCP Script Adapter Server")]
 #[command(
-    long_about = "genmcp turns existing command-line programs (scripts, binaries, and CLIs) into an MCP server.\n\nPrimary workflow:\n  1) Generate a starting config: genmcp config example > config.toml\n  2) Edit config.toml to define your tools\n  3) Run in stdio mode (VS Code): genmcp serve --config config.toml --transport stdio\n  4) Or run in websocket mode (hosted): genmcp serve --config config.toml --transport websocket --host 0.0.0.0 --port 8080\n\nTip: Use `genmcp config schema > schema.json` to view the exact config structure."
+    long_about = "gen-mcp turns existing command-line programs (scripts, binaries, and CLIs) into an MCP server.\n\nPrimary workflow:\n  1) Generate a starting config: gen-mcp config example > config.toml\n  2) Edit config.toml to define your tools\n  3) Run in stdio mode (VS Code): gen-mcp serve --config config.toml --transport stdio\n  4) Or run in websocket mode (hosted): gen-mcp serve --config config.toml --transport websocket --host 0.0.0.0 --port 8080\n\nTip: Use `gen-mcp config schema > schema.json` to view the exact config structure."
 )]
 #[command(version)]
 struct Cli {
@@ -102,20 +102,20 @@ async fn main() -> Result<()> {
             // transport. The default transport set (stdio + websocket) already
             // permits websocket because we built with the `auth` feature (which
             // implies `websocket`); auth is only enforced when ws_auth != None.
-            let server_config = ServerConfig::new("genmcp", env!("CARGO_PKG_VERSION"))
+            let server_config = ServerConfig::new("gen-mcp", env!("CARGO_PKG_VERSION"))
                 .tools_list_changed(false)
                 .websocket_auth(ws_auth);
             let core = ServerCore::new(server_config, Arc::new(service));
             mcp_core::serve(core, &common).await?;
         }
         Commands::Config { command } => match command {
-            ConfigCommands::Schema => genmcp::config_schema::output_generated_schema()?,
-            ConfigCommands::Example => genmcp::config_schema::output_generated_example_config()?,
+            ConfigCommands::Schema => gen_mcp::config_schema::output_generated_schema()?,
+            ConfigCommands::Example => gen_mcp::config_schema::output_generated_example_config()?,
             ConfigCommands::Docs { curated } => {
                 if curated {
-                    genmcp::config_schema::output_docs_curated()?
+                    gen_mcp::config_schema::output_docs_curated()?
                 } else {
-                    genmcp::config_schema::output_docs_generated()?
+                    gen_mcp::config_schema::output_docs_generated()?
                 }
             }
         },
@@ -132,7 +132,7 @@ async fn main() -> Result<()> {
 /// validation already rejects specifying both a secret and an OIDC/JWKS method,
 /// so the config branch is unambiguous.
 fn resolve_ws_auth(
-    config_auth: Option<&genmcp::config::WebSocketAuth>,
+    config_auth: Option<&gen_mcp::config::WebSocketAuth>,
     jwt_secret_override: Option<String>,
     oidc_issuer_override: Option<String>,
 ) -> WsAuth {
@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn ws_auth_none_when_disabled() {
-        let auth = genmcp::config::WebSocketAuth {
+        let auth = gen_mcp::config::WebSocketAuth {
             enabled: false,
             secret: Some("s".into()),
             oidc_issuer: None,
@@ -191,7 +191,7 @@ mod tests {
 
     #[test]
     fn ws_auth_secret_from_config() {
-        let auth = genmcp::config::WebSocketAuth {
+        let auth = gen_mcp::config::WebSocketAuth {
             enabled: true,
             secret: Some("topsecret".into()),
             oidc_issuer: None,
@@ -205,7 +205,7 @@ mod tests {
 
     #[test]
     fn ws_auth_oidc_from_config() {
-        let auth = genmcp::config::WebSocketAuth {
+        let auth = gen_mcp::config::WebSocketAuth {
             enabled: true,
             secret: None,
             oidc_issuer: Some("https://issuer.example".into()),
@@ -219,7 +219,7 @@ mod tests {
 
     #[test]
     fn ws_auth_jwks_from_config() {
-        let auth = genmcp::config::WebSocketAuth {
+        let auth = gen_mcp::config::WebSocketAuth {
             enabled: true,
             secret: None,
             oidc_issuer: None,
@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn cli_secret_override_wins_over_config() {
-        let auth = genmcp::config::WebSocketAuth {
+        let auth = gen_mcp::config::WebSocketAuth {
             enabled: true,
             secret: None,
             oidc_issuer: Some("https://issuer.example".into()),

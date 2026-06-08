@@ -41,11 +41,55 @@ impl std::str::FromStr for TerminationSignal {
     }
 }
 
+/// JSON Schema type of a parameter's value.
+///
+/// This governs how the parameter is *advertised* in the generated MCP input
+/// schema (the JSON type seen by the client/LLM). It is orthogonal to the
+/// `flag`/`takes_value`/`split_args` knobs, which govern how the value is
+/// emitted on the command line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ParamType {
+    /// Infer the JSON type from the CLI emission knobs (back-compat default):
+    /// a flag-only parameter (`takes_value = false` with a `flag`) is a
+    /// `boolean` toggle; everything else is a `string`.
+    #[default]
+    Infer,
+    /// A JSON `string`.
+    String,
+    /// A JSON `integer`.
+    Integer,
+    /// A JSON `number`.
+    Number,
+    /// A JSON `boolean`.
+    Boolean,
+    /// A JSON `string` constrained to an enumerated set (see `enum`).
+    Enum,
+}
+
 /// Parameter definition for a tool
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct Parameter {
     /// Description of the parameter
     pub description: String,
+    /// JSON Schema type of the parameter's value. Defaults to inference from the
+    /// CLI emission knobs (back-compat): flag-only → `boolean`, otherwise
+    /// `string`.
+    #[serde(default, rename = "type")]
+    pub param_type: ParamType,
+    /// Allowed values for an enumerated (string) parameter. When set, the
+    /// generated schema constrains the parameter to these values.
+    #[serde(default, rename = "enum")]
+    pub r#enum: Option<Vec<String>>,
+    /// Default value advertised in the generated schema (optional).
+    #[serde(default)]
+    pub default: Option<serde_json::Value>,
+    /// Minimum value for numeric parameters (optional, advertised in schema).
+    #[serde(default)]
+    pub minimum: Option<f64>,
+    /// Maximum value for numeric parameters (optional, advertised in schema).
+    #[serde(default)]
+    pub maximum: Option<f64>,
     /// Example value
     #[serde(default)]
     pub example: Option<String>,
@@ -77,6 +121,19 @@ fn default_false() -> bool {
     false
 }
 
+/// How a tool's stdout is returned to the client.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum OutputFormat {
+    /// Return the classic "Exit code / STDOUT / STDERR" text block (default).
+    #[default]
+    Text,
+    /// Parse stdout as JSON on success and return it as `structuredContent`
+    /// (plus a pretty-printed text block). Falls back to the `Text` formatting
+    /// when stdout is not valid JSON or the command failed.
+    Json,
+}
+
 /// Tool configuration
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct Tool {
@@ -86,6 +143,10 @@ pub struct Tool {
     pub description: String,
     /// Command to execute
     pub command: String,
+    /// Output format for the tool's result. Defaults to `text` (the classic
+    /// "Exit code / STDOUT / STDERR" block).
+    #[serde(default)]
+    pub output: OutputFormat,
     /// Optional explicit argument order for tool parameters.
     ///
     /// When present, arguments are built in this order first; any additional parameters
@@ -182,6 +243,12 @@ pub struct Group {
 /// Root configuration structure matching TOML format
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 pub struct ConfigToml {
+    /// Advertise the 5 runtime-override knobs (`timeout`, `stop_after`,
+    /// `output_head_lines`, `output_tail_lines`, `stderr_lines`) in every tool's
+    /// generated input schema. Defaults to `false`: the overrides are still
+    /// honored when a client sends them, they are simply not advertised.
+    #[serde(default)]
+    pub expose_runtime_overrides: bool,
     /// Groups of tools
     #[serde(default)]
     pub groups: HashMap<String, Group>,
@@ -214,6 +281,8 @@ fn default_auth_enabled() -> bool {
 /// Root configuration structure
 #[derive(Debug, Clone)]
 pub struct Config {
+    /// Whether the 5 runtime-override knobs are advertised in tool schemas.
+    pub expose_runtime_overrides: bool,
     /// Groups of tools
     pub groups: HashMap<String, Group>,
     /// WebSocket authentication configuration (optional)
@@ -259,6 +328,8 @@ pub struct ResolvedTool {
     pub stderr_lines: u64,
     /// Maximum STDERR lines
     pub stderr_lines_max: u64,
+    /// Output format for the tool's result.
+    pub output: OutputFormat,
     /// Tool parameters
     pub parameters: HashMap<String, Parameter>,
 }
@@ -616,6 +687,7 @@ impl Config {
                 .stderr_lines_max
                 .or(group.default_stderr_lines_max)
                 .unwrap_or(500),
+            output: tool.output,
             parameters: tool.parameters.clone(),
         })
     }
@@ -642,6 +714,7 @@ impl std::str::FromStr for Config {
         let config_toml: ConfigToml = toml::from_str(content).map_err(ConfigError::ParseToml)?;
 
         let mut config = Config {
+            expose_runtime_overrides: config_toml.expose_runtime_overrides,
             groups: config_toml.groups,
             websocket_auth: config_toml.websocket_auth,
         };

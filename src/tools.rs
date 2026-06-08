@@ -3,7 +3,7 @@
 
 // Tool registry and MCP tool definitions
 
-use crate::config::{Config, ResolvedTool};
+use crate::config::{Config, ParamType, ResolvedTool};
 use crate::error::{Result, ToolRegistryError};
 use std::collections::HashMap;
 
@@ -12,6 +12,9 @@ use std::collections::HashMap;
 pub struct ToolRegistry {
     /// Map of full tool name to resolved tool configuration
     tools: HashMap<String, ResolvedTool>,
+    /// Whether the 5 runtime-override knobs are advertised in the generated
+    /// input schema. They are always *honored* at call time regardless.
+    expose_runtime_overrides: bool,
 }
 
 impl ToolRegistry {
@@ -28,7 +31,10 @@ impl ToolRegistry {
             tools.insert(full_name, tool);
         }
 
-        Ok(ToolRegistry { tools })
+        Ok(ToolRegistry {
+            tools,
+            expose_runtime_overrides: config.expose_runtime_overrides,
+        })
     }
 
     /// Get a tool by its full name
@@ -83,22 +89,62 @@ impl ToolRegistry {
 
         for (param_name, param) in &tool.parameters {
             let mut param_schema = serde_json::Map::new();
-            // A flag-only parameter (a flag with no value) is a boolean toggle:
-            // it is emitted when the supplied value is truthy. Everything else
+
+            // Resolve the JSON type. An explicit `type` wins; otherwise infer
+            // from the CLI emission knobs (back-compat): a flag-only parameter
+            // (a flag with no value) is a boolean toggle; everything else
             // (positional values and flag-with-value) is a string.
-            let param_type = if param.flag.is_some() && !param.takes_value {
-                "boolean"
-            } else {
-                "string"
+            let json_type = match param.param_type {
+                ParamType::Infer => {
+                    if param.flag.is_some() && !param.takes_value {
+                        "boolean"
+                    } else {
+                        "string"
+                    }
+                }
+                ParamType::String => "string",
+                ParamType::Integer => "integer",
+                ParamType::Number => "number",
+                ParamType::Boolean => "boolean",
+                // Enum is a constrained string.
+                ParamType::Enum => "string",
             };
             param_schema.insert(
                 "type".to_string(),
-                serde_json::Value::String(param_type.to_string()),
+                serde_json::Value::String(json_type.to_string()),
             );
             param_schema.insert(
                 "description".to_string(),
                 serde_json::Value::String(param.description.clone()),
             );
+
+            // Emit an `enum` constraint when allowed values are configured (for
+            // an explicit `type = "enum"` or simply whenever `enum` is set).
+            if let Some(values) = &param.r#enum {
+                param_schema.insert(
+                    "enum".to_string(),
+                    serde_json::Value::Array(
+                        values
+                            .iter()
+                            .map(|v| serde_json::Value::String(v.clone()))
+                            .collect(),
+                    ),
+                );
+            }
+
+            if let Some(default) = &param.default {
+                param_schema.insert("default".to_string(), default.clone());
+            }
+            if let Some(minimum) = param.minimum
+                && let Some(n) = serde_json::Number::from_f64(minimum)
+            {
+                param_schema.insert("minimum".to_string(), serde_json::Value::Number(n));
+            }
+            if let Some(maximum) = param.maximum
+                && let Some(n) = serde_json::Number::from_f64(maximum)
+            {
+                param_schema.insert("maximum".to_string(), serde_json::Value::Number(n));
+            }
 
             if let Some(example) = &param.example {
                 param_schema.insert(
@@ -114,7 +160,29 @@ impl ToolRegistry {
             }
         }
 
-        // Add runtime override parameters
+        // The 5 runtime-override knobs are only *advertised* when the config
+        // opts in via `expose_runtime_overrides`. They are still honored at call
+        // time regardless (see `service::call_tool`).
+        if self.expose_runtime_overrides {
+            Self::add_runtime_override_properties(tool, &mut properties);
+        }
+
+        McpToolSchema {
+            name: tool.full_name.clone(),
+            description,
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": properties,
+                "required": required,
+            }),
+        }
+    }
+
+    /// Add the 5 runtime-override knobs to a tool's input-schema properties.
+    fn add_runtime_override_properties(
+        tool: &ResolvedTool,
+        properties: &mut serde_json::Map<String, serde_json::Value>,
+    ) {
         let mut timeout_schema = serde_json::Map::new();
         timeout_schema.insert(
             "type".to_string(),
@@ -199,16 +267,6 @@ impl ToolRegistry {
             "stderr_lines".to_string(),
             serde_json::Value::Object(stderr_schema),
         );
-
-        McpToolSchema {
-            name: tool.full_name.clone(),
-            description,
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": properties,
-                "required": required,
-            }),
-        }
     }
 
     /// Validate runtime override values against MAX constraints
@@ -421,8 +479,46 @@ default_output_head_lines_max = 1000
     }
 
     #[test]
-    fn test_schema_includes_runtime_overrides() {
+    fn test_runtime_overrides_absent_by_default() {
+        // By default the runtime-override knobs are NOT advertised in the schema.
         let config = create_test_config();
+        let registry = ToolRegistry::from_config(&config).unwrap();
+        let tool = registry.get_tool("test_group_test_tool").unwrap();
+        let schema = registry.generate_tool_schema(tool);
+
+        let properties = schema
+            .input_schema
+            .get("properties")
+            .unwrap()
+            .as_object()
+            .unwrap();
+        assert!(!properties.contains_key("timeout"));
+        assert!(!properties.contains_key("stop_after"));
+        assert!(!properties.contains_key("output_head_lines"));
+        assert!(!properties.contains_key("output_tail_lines"));
+        assert!(!properties.contains_key("stderr_lines"));
+    }
+
+    #[test]
+    fn test_schema_includes_runtime_overrides_when_exposed() {
+        // With `expose_runtime_overrides = true` the 5 knobs are advertised.
+        let toml = r#"
+expose_runtime_overrides = true
+
+[groups.test_group]
+default_timeout = 30
+default_timeout_max = 300
+
+  [[groups.test_group.tools]]
+  name = "test_tool"
+  description = "A test tool"
+  command = "/bin/echo"
+
+    [groups.test_group.tools.parameters.arg1]
+    description = "First argument"
+    required = true
+"#;
+        let config = Config::from_str(toml).unwrap();
         let registry = ToolRegistry::from_config(&config).unwrap();
         let tool = registry.get_tool("test_group_test_tool").unwrap();
         let schema = registry.generate_tool_schema(tool);
@@ -438,6 +534,52 @@ default_output_head_lines_max = 1000
         assert!(properties.contains_key("output_head_lines"));
         assert!(properties.contains_key("output_tail_lines"));
         assert!(properties.contains_key("stderr_lines"));
+    }
+
+    #[test]
+    fn test_typed_param_schema_emits_constraints() {
+        // Explicit type/enum/default/min/max are emitted precisely.
+        let toml = r#"
+[groups.g]
+  [[groups.g.tools]]
+  name = "tool"
+  description = "tool"
+  command = "/bin/echo"
+
+    [groups.g.tools.parameters.count]
+    description = "count"
+    type = "integer"
+    default = 5
+    minimum = 1
+    maximum = 100
+
+    [groups.g.tools.parameters.mode]
+    description = "mode"
+    type = "enum"
+    enum = ["fast", "slow"]
+"#;
+        let config = Config::from_str(toml).unwrap();
+        let registry = ToolRegistry::from_config(&config).unwrap();
+        let tool = registry.get_tool("g_tool").unwrap();
+        let schema = registry.generate_tool_schema(tool);
+        let props = schema
+            .input_schema
+            .get("properties")
+            .unwrap()
+            .as_object()
+            .unwrap();
+
+        let count = props.get("count").unwrap();
+        assert_eq!(count.get("type").unwrap(), "integer");
+        assert_eq!(count.get("default").unwrap(), 5);
+        assert_eq!(count.get("minimum").unwrap(), 1.0);
+        assert_eq!(count.get("maximum").unwrap(), 100.0);
+
+        let mode = props.get("mode").unwrap();
+        assert_eq!(mode.get("type").unwrap(), "string");
+        let enum_vals = mode.get("enum").unwrap().as_array().unwrap();
+        assert_eq!(enum_vals.len(), 2);
+        assert_eq!(enum_vals[0], "fast");
     }
 
     #[test]

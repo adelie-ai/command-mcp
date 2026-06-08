@@ -11,7 +11,7 @@
 //! `split_args` shell-splitting, runtime-override validation, and the
 //! "Exit code / STDOUT / STDERR" result formatting the old server produced.
 
-use crate::config::Config;
+use crate::config::{Config, OutputFormat};
 use crate::error::McpError;
 use crate::executor::execute_command;
 use crate::tools::ToolRegistry;
@@ -300,8 +300,25 @@ impl McpService for GenMcpService {
         .await
         .map_err(|e| CallError::tool(e.to_string()))?;
 
-        // Format the result exactly as the previous server did: a single text
-        // block with the exit code, STDOUT, and STDERR (always shown).
+        // A non-zero exit code is a tool-level error, unless the process was
+        // stopped by the `stop_after` budget (which is a successful outcome).
+        let is_error = exec_result.exit_code != 0 && !exec_result.stopped_after;
+
+        // JSON output mode: when configured and the command succeeded, try to
+        // parse stdout as JSON and return it as structured content. On a parse
+        // failure (or a failed command) we fall back to the classic text block.
+        if tool.output == OutputFormat::Json
+            && !is_error
+            && let Ok(parsed) = serde_json::from_str::<Value>(&exec_result.stdout)
+        {
+            // ToolReply::json puts the value in both a text block and
+            // `structuredContent`. is_error is false here by construction.
+            return ToolReply::json(&parsed).map_err(|e| CallError::internal(e.to_string()));
+        }
+
+        // Default: format the result exactly as the previous server did — a
+        // single text block with the exit code, STDOUT, and STDERR (always
+        // shown).
         let mut response_text = format!(
             "Exit code: {}\n\nSTDOUT:\n{}",
             exec_result.exit_code, exec_result.stdout
@@ -311,10 +328,6 @@ impl McpService for GenMcpService {
         } else {
             response_text.push_str(&format!("\n\nSTDERR:\n{}", exec_result.stderr));
         }
-
-        // A non-zero exit code is a tool-level error, unless the process was
-        // stopped by the `stop_after` budget (which is a successful outcome).
-        let is_error = exec_result.exit_code != 0 && !exec_result.stopped_after;
 
         let mut reply = ToolReply::text(response_text);
         reply.is_error = is_error;
@@ -356,11 +369,53 @@ default_timeout_max = 300
         let tools = svc.tools();
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].name, "test_group_echo");
-        // Runtime-override knobs are present in the generated schema.
+        // Declared parameters are present; the runtime-override knobs are NOT
+        // advertised by default (only when `expose_runtime_overrides = true`).
         let props = tools[0].input_schema.get("properties").unwrap();
         assert!(props.get("text").is_some());
+        assert!(props.get("timeout").is_none());
+        assert!(props.get("stop_after").is_none());
+    }
+
+    #[test]
+    fn tools_advertise_overrides_when_exposed() {
+        let svc = service_from(
+            r#"
+expose_runtime_overrides = true
+
+[groups.test_group]
+default_timeout = 30
+default_timeout_max = 300
+
+  [[groups.test_group.tools]]
+  name = "echo"
+  description = "Echo command"
+  command = "/bin/echo"
+
+    [groups.test_group.tools.parameters.text]
+    description = "Text to echo"
+    required = true
+"#,
+        );
+        let tools = svc.tools();
+        let props = tools[0].input_schema.get("properties").unwrap();
         assert!(props.get("timeout").is_some());
         assert!(props.get("stop_after").is_some());
+    }
+
+    #[tokio::test]
+    async fn runtime_override_honored_even_when_not_advertised() {
+        // The override is not in the schema but is still honored / validated at
+        // call time: an over-max value is rejected.
+        let svc = echo_service();
+        let err = svc
+            .call_tool(
+                "test_group_echo",
+                &serde_json::json!({ "text": "hi", "timeout": 99999 }),
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, CallError::InvalidParams(_)));
     }
 
     #[tokio::test]
@@ -429,6 +484,70 @@ default_timeout_max = 300
             .await
             .unwrap();
         assert!(reply.is_error);
+    }
+
+    #[tokio::test]
+    async fn json_output_yields_structured_content() {
+        // A tool with `output = "json"` whose stdout is valid JSON returns
+        // non-error structured content (and a text block).
+        let svc = service_from(
+            r#"
+[groups.g]
+  [[groups.g.tools]]
+  name = "obj"
+  description = "emit json"
+  command = "/bin/echo"
+  output = "json"
+  arg_order = ["payload"]
+
+    [groups.g.tools.parameters.payload]
+    description = "json payload"
+    required = true
+"#,
+        );
+        let reply = svc
+            .call_tool("g_obj", &serde_json::json!({ "payload": r#"{"k":1}"# }))
+            .await
+            .unwrap();
+        assert!(!reply.is_error);
+        let sc = reply
+            .structured_content
+            .as_ref()
+            .expect("expected structuredContent");
+        assert_eq!(sc.get("k").unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn json_output_invalid_json_falls_back_to_text() {
+        // `output = "json"` but stdout is not valid JSON → classic text block,
+        // no structured content.
+        let svc = service_from(
+            r#"
+[groups.g]
+  [[groups.g.tools]]
+  name = "notjson"
+  description = "emit text"
+  command = "/bin/echo"
+  output = "json"
+  arg_order = ["payload"]
+
+    [groups.g.tools.parameters.payload]
+    description = "payload"
+    required = true
+"#,
+        );
+        let reply = svc
+            .call_tool("g_notjson", &serde_json::json!({ "payload": "not json" }))
+            .await
+            .unwrap();
+        assert!(!reply.is_error);
+        assert!(reply.structured_content.is_none());
+        let text = match &reply.content[0] {
+            mcp_core::Content::Text(t) => t.clone(),
+            _ => panic!("expected text content"),
+        };
+        assert!(text.contains("Exit code: 0"));
+        assert!(text.contains("not json"));
     }
 
     #[tokio::test]

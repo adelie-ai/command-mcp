@@ -1,10 +1,10 @@
 # Architecture Documentation
 
-System architecture and design decisions for genmcp.
+System architecture and design decisions for gen-mcp.
 
 ## Overview
 
-genmcp is a generic MCP (Model Context Protocol) server that acts as an adapter between MCP clients and arbitrary command-line tools. It provides secure execution, timeout management, and flexible configuration.
+gen-mcp is a generic MCP (Model Context Protocol) server that acts as an adapter between MCP clients and arbitrary command-line tools. It provides secure execution, timeout management, and flexible configuration.
 
 ## Architecture Diagram
 

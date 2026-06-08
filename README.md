@@ -1,16 +1,16 @@
-# genmcp - Generic MCP Script Adapter
+# gen-mcp - Generic MCP Script Adapter
 
-`genmcp` turns existing command-line programs (shell scripts, binaries, and CLIs) into an MCP server you can plug into MCP clients (like VS Code) **without rewriting them as a bespoke MCP service**.
+`gen-mcp` turns existing command-line programs (shell scripts, binaries, and CLIs) into an MCP server you can plug into MCP clients (like VS Code) **without rewriting them as a bespoke MCP service**.
 
 ## Security Notice (Read This)
 
-`genmcp` **does not vet, sandbox, or approve** the command lines you configure or the programs you execute. It provides **no built-in allow/deny or interactive approval mechanism**.
+`gen-mcp` **does not vet, sandbox, or approve** the command lines you configure or the programs you execute. It provides **no built-in allow/deny or interactive approval mechanism**.
 
 - **You are responsible** for ensuring the configured commands and binaries are safe and appropriate for your environment.
 - **Treat your config as code**: review it, restrict who can edit it, and assume a malicious or careless tool definition can run destructive commands.
 - **Run in a secured environment**: use least-privilege accounts, tight filesystem/network permissions, and appropriate OS/container isolation for your threat model.
 
-## Why genmcp?
+## Why gen-mcp?
 
 - **Turn arbitrary scripts into MCP tools**: Wrap your existing shell scripts and internal tooling behind MCP, with structured tool definitions and parameters.
 - **Spin up MCP servers for existing CLIs quickly**: Point at a CLI you already trust, describe its arguments once in TOML, and expose it as an MCP tool set.
@@ -47,34 +47,34 @@ cargo build --release
 
 ### Basic Usage
 
-1. Create a configuration file (see `examples/unixtools_config.toml` or start with `genmcp config example`)
+1. Create a configuration file (see `examples/unixtools_config.toml` or start with `gen-mcp config example`)
 
 2. Choose the transport mode at runtime with `--mode` (this is **not** part of the config file).
 
 3. Run in STDIN/STDOUT mode (for VS Code):
 ```bash
-./target/release/genmcp serve --config examples/unixtools_config.toml --mode stdio
+./target/release/gen-mcp serve --config examples/unixtools_config.toml --mode stdio
 ```
 
 4. Run in WebSocket mode:
 ```bash
-./target/release/genmcp serve --config examples/unixtools_config.toml --mode websocket --port 8080
+./target/release/gen-mcp serve --config examples/unixtools_config.toml --mode websocket --port 8080
 ```
 
 ### Generate Configuration Schema
 
 ```bash
 # JSON Schema
-./target/release/genmcp config schema
+./target/release/gen-mcp config schema
 
 # TOML Example
-./target/release/genmcp config example
+./target/release/gen-mcp config example
 
 # Markdown Documentation
-./target/release/genmcp config docs
+./target/release/gen-mcp config docs
 
 # Curated (hand-written) Markdown Documentation
-./target/release/genmcp config docs --curated
+./target/release/gen-mcp config docs --curated
 ```
 
 ## Configuration
@@ -94,13 +94,13 @@ Key configuration concepts:
 
 ```bash
 # Build
-docker build -t genmcp .
+docker build -t gen-mcp .
 
 # Run in stdio mode
-docker run -i genmcp serve --mode stdio
+docker run -i gen-mcp serve --mode stdio
 
 # Run in websocket mode
-docker run -p 8080:8080 genmcp serve --mode websocket --port 8080
+docker run -p 8080:8080 gen-mcp serve --mode websocket --port 8080
 ```
 
 The container defaults `GENMCP_CONFIG` to `/example_configs/echo_config.toml`. To mount your own config, mount into `/configs` and set `GENMCP_CONFIG`:
@@ -109,7 +109,7 @@ The container defaults `GENMCP_CONFIG` to `/example_configs/echo_config.toml`. T
 docker run -i \
   -v /path/to/config.toml:/configs/config.toml:ro \
   -e GENMCP_CONFIG=/configs/config.toml \
-  genmcp serve --mode stdio
+  gen-mcp serve --mode stdio
 ```
 
 ## VS Code Integration
@@ -120,8 +120,8 @@ Quick example:
 ```json
 {
   "mcpServers": {
-    "genmcp": {
-      "command": "genmcp",
+    "gen-mcp": {
+      "command": "gen-mcp",
       "args": [
         "serve",
         "--config",

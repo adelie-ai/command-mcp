@@ -1,6 +1,6 @@
 # VS Code MCP Configuration Examples
 
-This document shows how to configure genmcp as an MCP server in VS Code.
+This document shows how to configure gen-mcp as an MCP server in VS Code.
 
 ## Configuration Location
 
@@ -24,8 +24,8 @@ Or in your VS Code settings.json:
 ```json
 {
   "mcpServers": {
-    "genmcp-file-ops": {
-      "command": "genmcp",
+    "gen-mcp-file-ops": {
+      "command": "gen-mcp",
       "args": [
         "serve",
         "--config",
@@ -43,8 +43,8 @@ Or in your VS Code settings.json:
 ```json
 {
   "mcpServers": {
-    "genmcp-docker": {
-      "command": "genmcp",
+    "gen-mcp-docker": {
+      "command": "gen-mcp",
       "args": [
         "serve",
         "--config",
@@ -62,8 +62,8 @@ Or in your VS Code settings.json:
 ```json
 {
   "mcpServers": {
-    "genmcp-custom": {
-      "command": "genmcp",
+    "gen-mcp-custom": {
+      "command": "gen-mcp",
       "args": [
         "serve",
         "--config",
@@ -81,13 +81,13 @@ Or in your VS Code settings.json:
 
 ## WebSocket Mode Configuration
 
-If you want to run genmcp as a WebSocket server (useful for remote access or multiple clients):
+If you want to run gen-mcp as a WebSocket server (useful for remote access or multiple clients):
 
 ```json
 {
   "mcpServers": {
-    "genmcp-websocket": {
-      "command": "genmcp",
+    "gen-mcp-websocket": {
+      "command": "gen-mcp",
       "args": [
         "serve",
         "--config",
@@ -109,12 +109,12 @@ If you want to run genmcp as a WebSocket server (useful for remote access or mul
 
 ## Using Docker Image
 
-If you've built a Docker image of genmcp:
+If you've built a Docker image of gen-mcp:
 
 ```json
 {
   "mcpServers": {
-    "genmcp-docker": {
+    "gen-mcp-docker": {
       "command": "docker",
       "args": [
         "run",
@@ -122,7 +122,7 @@ If you've built a Docker image of genmcp:
         "--rm",
         "-v",
         "/path/to/config.toml:/config.toml:ro",
-        "genmcp:latest",
+        "gen-mcp:latest",
         "serve",
         "--config",
         "/config.toml",
@@ -136,13 +136,13 @@ If you've built a Docker image of genmcp:
 
 ## Multiple Server Configurations
 
-You can configure multiple genmcp instances with different config files:
+You can configure multiple gen-mcp instances with different config files:
 
 ```json
 {
   "mcpServers": {
-    "genmcp-file-ops": {
-      "command": "genmcp",
+    "gen-mcp-file-ops": {
+      "command": "gen-mcp",
       "args": [
         "serve",
         "--config",
@@ -151,8 +151,8 @@ You can configure multiple genmcp instances with different config files:
         "stdio"
       ]
     },
-    "genmcp-docker": {
-      "command": "genmcp",
+    "gen-mcp-docker": {
+      "command": "gen-mcp",
       "args": [
         "serve",
         "--config",
@@ -161,8 +161,8 @@ You can configure multiple genmcp instances with different config files:
         "stdio"
       ]
     },
-    "genmcp-system": {
-      "command": "genmcp",
+    "gen-mcp-system": {
+      "command": "gen-mcp",
       "args": [
         "serve",
         "--config",
@@ -177,13 +177,13 @@ You can configure multiple genmcp instances with different config files:
 
 ## Environment Variables
 
-You can set environment variables for the genmcp process:
+You can set environment variables for the gen-mcp process:
 
 ```json
 {
   "mcpServers": {
-    "genmcp-with-env": {
-      "command": "genmcp",
+    "gen-mcp-with-env": {
+      "command": "gen-mcp",
       "args": [
         "serve",
         "--config",
@@ -208,12 +208,12 @@ Always use absolute paths for the config file:
 ```json
 {
   "mcpServers": {
-    "genmcp": {
-      "command": "/usr/local/bin/genmcp",
+    "gen-mcp": {
+      "command": "/usr/local/bin/gen-mcp",
       "args": [
         "serve",
         "--config",
-        "/home/user/.config/genmcp/config.toml",
+        "/home/user/.config/gen-mcp/config.toml",
         "--mode",
         "stdio"
       ]
@@ -226,37 +226,37 @@ Always use absolute paths for the config file:
 
 ### Server Not Starting
 
-1. **Check the command path**: Make sure `genmcp` is in your PATH or use an absolute path
+1. **Check the command path**: Make sure `gen-mcp` is in your PATH or use an absolute path
 2. **Check config file path**: Use absolute paths, not relative paths
 3. **Check file permissions**: Ensure the config file is readable
 4. **Check logs**: VS Code should show MCP server logs in the output panel
 
 ### Tools Not Appearing
 
-1. **Verify config file**: Use `genmcp config schema` to view the generated JSON Schema
+1. **Verify config file**: Use `gen-mcp config schema` to view the generated JSON Schema
 2. **Check tool names**: Tool names are prefixed with group name (e.g., `docker_run`, `file_operations_mv`)
 3. **Restart VS Code**: After changing MCP configuration, restart VS Code
 
 ### Permission Errors
 
 If tools require elevated permissions:
-- Ensure the genmcp process has necessary permissions
+- Ensure the gen-mcp process has necessary permissions
 - Consider using `sudo` (not recommended for security reasons)
 - Better: Configure tools to use paths that don't require elevated permissions
 
 ## Example: Complete Setup
 
-Here's a complete example with multiple genmcp servers:
+Here's a complete example with multiple gen-mcp servers:
 
 ```json
 {
   "mcpServers": {
-    "genmcp-file-operations": {
-      "command": "genmcp",
+    "gen-mcp-file-operations": {
+      "command": "gen-mcp",
       "args": [
         "serve",
         "--config",
-        "/home/user/.config/genmcp/file_ops.toml",
+        "/home/user/.config/gen-mcp/file_ops.toml",
         "--mode",
         "stdio"
       ],
@@ -264,12 +264,12 @@ Here's a complete example with multiple genmcp servers:
         "PATH": "/usr/local/bin:/usr/bin:/bin"
       }
     },
-    "genmcp-docker": {
-      "command": "genmcp",
+    "gen-mcp-docker": {
+      "command": "gen-mcp",
       "args": [
         "serve",
         "--config",
-        "/home/user/.config/genmcp/docker.toml",
+        "/home/user/.config/gen-mcp/docker.toml",
         "--mode",
         "stdio"
       ],
@@ -296,7 +296,7 @@ After adding the configuration:
 To see what tools are available, you can generate the schema:
 
 ```bash
-genmcp config schema > schema.json
+gen-mcp config schema > schema.json
 ```
 
 This will show you all the tools, their parameters, and constraints defined in your config file.

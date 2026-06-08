@@ -1,4 +1,4 @@
-# Demo justfile for genmcp MCP tools
+# Demo justfile for gen-mcp MCP tools
 
 # Default recipe (runs if no recipe is provided)
 default:

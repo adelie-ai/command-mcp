@@ -1,6 +1,6 @@
 # Development Guide
 
-Development setup and contribution guidelines for genmcp.
+Development setup and contribution guidelines for gen-mcp.
 
 ## Development Setup
 
@@ -15,7 +15,7 @@ Development setup and contribution guidelines for genmcp.
 ```bash
 # Clone repository
 git clone <repository-url>
-cd genmcp
+cd gen-mcp
 
 # Build
 cargo build
@@ -33,7 +33,7 @@ cargo fmt
 ## Project Structure
 
 ```
-genmcp/
+gen-mcp/
 ├── Cargo.toml          # Dependencies and build configuration
 ├── Dockerfile          # Docker build configuration
 ├── README.md           # Main documentation
@@ -169,7 +169,7 @@ cargo build --release
 ### Docker Build
 
 ```bash
-docker build -t genmcp .
+docker build -t gen-mcp .
 ```
 
 ## Debugging

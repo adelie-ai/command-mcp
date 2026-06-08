@@ -1,4 +1,4 @@
-use genmcp::config::Config;
+use gen_mcp::config::Config;
 
 #[test]
 fn podman_example_config_parses() {

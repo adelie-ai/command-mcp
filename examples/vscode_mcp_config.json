@@ -1,7 +1,7 @@
 {
   "mcpServers": {
-    "genmcp-file-operations": {
-      "command": "genmcp",
+    "gen-mcp-file-operations": {
+      "command": "gen-mcp",
       "args": [
         "serve",
         "--config",
@@ -11,8 +11,8 @@
       ],
       "env": {}
     },
-    "genmcp-docker": {
-      "command": "genmcp",
+    "gen-mcp-docker": {
+      "command": "gen-mcp",
       "args": [
         "serve",
         "--config",
@@ -22,8 +22,8 @@
       ],
       "env": {}
     },
-    "genmcp-custom": {
-      "command": "genmcp",
+    "gen-mcp-custom": {
+      "command": "gen-mcp",
       "args": [
         "serve",
         "--config",
@@ -35,8 +35,8 @@
         "PATH": "/usr/local/bin:/usr/bin:/bin"
       }
     },
-    "genmcp-websocket": {
-      "command": "genmcp",
+    "gen-mcp-websocket": {
+      "command": "gen-mcp",
       "args": [
         "serve",
         "--config",

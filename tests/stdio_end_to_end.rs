@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{minimal_echo_config_toml, spawn_genmcp_stdio, write_temp_config};
+use common::{minimal_echo_config_toml, spawn_gen_mcp_stdio, write_temp_config};
 use serde_json::Value;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -85,7 +85,7 @@ async fn read_response_for_id(
 #[tokio::test]
 async fn stdio_end_to_end_initialize_and_tool_call() {
     let cfg = write_temp_config(&minimal_echo_config_toml());
-    let mut server = spawn_genmcp_stdio(&cfg.path);
+    let mut server = spawn_gen_mcp_stdio(&cfg.path);
 
     let mut stdin = server.child.stdin.take().expect("child stdin");
     let stdout = server.child.stdout.take().expect("child stdout");
@@ -144,7 +144,7 @@ async fn stdio_end_to_end_initialize_and_tool_call() {
 #[tokio::test]
 async fn stdio_end_to_end_content_length_framing_initialize_and_tool_call() {
     let cfg = write_temp_config(&minimal_echo_config_toml());
-    let mut server = spawn_genmcp_stdio(&cfg.path);
+    let mut server = spawn_gen_mcp_stdio(&cfg.path);
 
     let mut stdin = server.child.stdin.take().expect("child stdin");
     let stdout = server.child.stdout.take().expect("child stdout");
