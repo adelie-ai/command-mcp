@@ -83,9 +83,17 @@ impl ToolRegistry {
 
         for (param_name, param) in &tool.parameters {
             let mut param_schema = serde_json::Map::new();
+            // A flag-only parameter (a flag with no value) is a boolean toggle:
+            // it is emitted when the supplied value is truthy. Everything else
+            // (positional values and flag-with-value) is a string.
+            let param_type = if param.flag.is_some() && !param.takes_value {
+                "boolean"
+            } else {
+                "string"
+            };
             param_schema.insert(
                 "type".to_string(),
-                serde_json::Value::String("string".to_string()),
+                serde_json::Value::String(param_type.to_string()),
             );
             param_schema.insert(
                 "description".to_string(),
@@ -363,6 +371,53 @@ default_output_head_lines_max = 1000
             .unwrap();
         assert!(required.iter().any(|v| v.as_str().unwrap() == "arg1"));
         assert!(!required.iter().any(|v| v.as_str().unwrap() == "arg2"));
+    }
+
+    #[test]
+    fn test_schema_param_types_reflect_flags() {
+        // A flag-only parameter is a boolean toggle; a flag-with-value and a
+        // plain positional parameter are strings.
+        let toml = r#"
+[groups.g]
+  [[groups.g.tools]]
+  name = "tool"
+  description = "tool"
+  command = "/bin/echo"
+
+    [groups.g.tools.parameters.verbose]
+    description = "verbose flag"
+    flag = "-v"
+
+    [groups.g.tools.parameters.count]
+    description = "count"
+    flag = "-n"
+    takes_value = true
+
+    [groups.g.tools.parameters.path]
+    description = "path"
+"#;
+        let config = Config::from_str(toml).unwrap();
+        let registry = ToolRegistry::from_config(&config).unwrap();
+        let tool = registry.get_tool("g_tool").unwrap();
+        let schema = registry.generate_tool_schema(tool);
+
+        let properties = schema
+            .input_schema
+            .get("properties")
+            .unwrap()
+            .as_object()
+            .unwrap();
+
+        let ty = |name: &str| {
+            properties
+                .get(name)
+                .and_then(|p| p.get("type"))
+                .and_then(|t| t.as_str())
+                .unwrap()
+        };
+        assert_eq!(ty("verbose"), "boolean");
+        assert_eq!(ty("count"), "string");
+        assert_eq!(ty("path"), "string");
     }
 
     #[test]

@@ -758,7 +758,7 @@ mod tests {
     #[tokio::test]
     async fn test_stderr_line_limiting() {
         // Verify STDERR line limiting is applied consistently
-        let stderr_lines = vec![
+        let stderr_lines = [
             "error line 1",
             "error line 2",
             "error line 3",
