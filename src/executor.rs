@@ -5,11 +5,19 @@
 
 use crate::config::TerminationSignal;
 use crate::error::{ExecutionError, Result};
+use std::collections::VecDeque;
 use std::process::Stdio;
 use std::time::Duration;
-use tokio::io::{AsyncReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command as TokioCommand;
 use tokio::time::{sleep, timeout};
+
+/// Hard ceiling on how many bytes we will read from a single stream (stdout or
+/// stderr) before we stop reading and let the child be terminated. This caps
+/// memory regardless of the configured line limits so a command that emits
+/// unbounded output (e.g. `find /`, `cat /dev/zero`, `yes`) cannot OOM the
+/// server.
+const MAX_STREAM_BYTES: usize = 256 * 1024 * 1024;
 
 /// Execution result
 #[derive(Debug, Clone)]
@@ -22,6 +30,133 @@ pub struct ExecutionResult {
     pub stderr: String,
     /// Whether execution was stopped due to stop_after
     pub stopped_after: bool,
+}
+
+/// Output collected from a child stream, already bounded to the configured
+/// head/tail line budget and a hard byte ceiling.
+#[derive(Default)]
+struct CappedOutput {
+    /// First `keep_head` lines (in order).
+    head: Vec<String>,
+    /// Last `keep_tail` lines (in order).
+    tail: VecDeque<String>,
+    /// Total number of lines observed (may exceed head + tail).
+    total_lines: usize,
+    /// Whether reading was cut short because the byte ceiling was reached.
+    capped: bool,
+}
+
+impl CappedOutput {
+    /// Render the bounded output as a string, reproducing the head/tail
+    /// "... (N lines omitted) ..." format used by `apply_line_limits`.
+    ///
+    /// Because the collector only ever stores `keep_head` leading lines and
+    /// `keep_tail` trailing lines (with no overlap), the head and tail buffers
+    /// concatenated reconstruct the full output whenever nothing was omitted.
+    fn render(&self, head_lines: u64, tail_lines: u64) -> String {
+        let head = head_lines as usize;
+        let tail = tail_lines as usize;
+
+        let tail_joined = || self.tail.iter().cloned().collect::<Vec<_>>().join("\n");
+
+        // When both limits are 0, callers expect the full (byte-capped) output.
+        // The collector stored every line in `tail` in this mode.
+        if head == 0 && tail == 0 {
+            return tail_joined();
+        }
+
+        let kept = self.head.len() + self.tail.len();
+        let omitted = self.total_lines.saturating_sub(kept);
+
+        if head > 0 && tail > 0 && omitted > 0 {
+            format!(
+                "{}\n... ({} lines omitted) ...\n{}",
+                self.head.join("\n"),
+                omitted,
+                tail_joined(),
+            )
+        } else if head > 0 && tail == 0 {
+            self.head.join("\n")
+        } else if tail > 0 && head == 0 {
+            tail_joined()
+        } else {
+            // Everything fit within the budget; head + tail is the full output.
+            let mut lines: Vec<&str> = self.head.iter().map(|s| s.as_str()).collect();
+            lines.extend(self.tail.iter().map(|s| s.as_str()));
+            lines.join("\n")
+        }
+    }
+}
+
+/// Read a child stream line-by-line, keeping at most `keep_head` leading lines
+/// and `keep_tail` trailing lines, and stopping once `MAX_STREAM_BYTES` have
+/// been read. This bounds memory regardless of how much the child emits.
+async fn collect_capped_lines<R>(handle: R, keep_head: usize, keep_tail: usize) -> CappedOutput
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    collect_capped_lines_with_cap(handle, keep_head, keep_tail, MAX_STREAM_BYTES).await
+}
+
+/// Like [`collect_capped_lines`] but with an explicit byte ceiling, so tests can
+/// exercise the cap without generating hundreds of MiB.
+async fn collect_capped_lines_with_cap<R>(
+    handle: R,
+    keep_head: usize,
+    keep_tail: usize,
+    max_bytes: usize,
+) -> CappedOutput
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    let mut reader = BufReader::new(handle);
+    let mut head: Vec<String> = Vec::new();
+    let mut tail: VecDeque<String> = VecDeque::new();
+    let mut total_lines = 0usize;
+    let mut bytes = 0usize;
+    let mut capped = false;
+    // When both budgets are 0 we keep everything (still byte-capped); collect
+    // those lines into `tail` so `render` can emit them all.
+    let keep_all = keep_head == 0 && keep_tail == 0;
+
+    let mut line = String::new();
+    loop {
+        line.clear();
+        let n = match reader.read_line(&mut line).await {
+            Ok(0) => break, // EOF
+            Ok(n) => n,
+            Err(_) => break,
+        };
+        bytes += n;
+        // Strip a single trailing newline for storage consistency.
+        let trimmed = line.trim_end_matches(['\r', '\n']).to_string();
+
+        if keep_all {
+            tail.push_back(trimmed);
+        } else {
+            if head.len() < keep_head {
+                head.push(trimmed);
+            } else if keep_tail > 0 {
+                if tail.len() == keep_tail {
+                    tail.pop_front();
+                }
+                tail.push_back(trimmed);
+            }
+        }
+        total_lines += 1;
+
+        if bytes >= max_bytes {
+            capped = true;
+            break;
+        }
+    }
+
+    CappedOutput {
+        head,
+        tail,
+        total_lines,
+        capped,
+    }
 }
 
 /// Execute a command with the given parameters
@@ -66,20 +201,19 @@ pub async fn execute_command(
             stderr: "Failed to capture stderr".to_string(),
         })?;
 
-    // Spawn tasks to read stdout and stderr
+    // Spawn tasks to read stdout and stderr. Reads are bounded: we keep only the
+    // configured head/tail line budget and stop reading once a hard byte ceiling
+    // is reached, so unbounded child output cannot grow our memory without limit.
+    // stdout keeps both head and tail; stderr keeps only the tail.
+    let stdout_keep_head = output_head_lines as usize;
+    let stdout_keep_tail = output_tail_lines as usize;
     let stdout_task = tokio::spawn(async move {
-        let mut reader = BufReader::new(stdout_handle);
-        let mut output = String::new();
-        let _ = reader.read_to_string(&mut output).await;
-        output
+        collect_capped_lines(stdout_handle, stdout_keep_head, stdout_keep_tail).await
     });
 
-    let stderr_task = tokio::spawn(async move {
-        let mut reader = BufReader::new(stderr_handle);
-        let mut output = String::new();
-        let _ = reader.read_to_string(&mut output).await;
-        output
-    });
+    let stderr_keep_tail = stderr_lines as usize;
+    let stderr_task =
+        tokio::spawn(async move { collect_capped_lines(stderr_handle, 0, stderr_keep_tail).await });
 
     // Handle stop_after if configured
     if let Some(stop_after) = stop_after_secs
@@ -105,14 +239,14 @@ pub async fn execute_command(
     match timeout(timeout_duration, child.wait()).await {
         Ok(Ok(status)) => {
             // Process completed within timeout
-            let exit_code = status.code().unwrap_or(0);
+            let exit_code = exit_code_from_status(&status);
             let stdout = stdout_task.await.unwrap_or_default();
             let stderr = stderr_task.await.unwrap_or_default();
             Ok(ExecutionResult {
                 exit_code,
-                stdout: apply_line_limits_to_string(&stdout, output_head_lines, output_tail_lines),
+                stdout: stdout.render(output_head_lines, output_tail_lines),
                 // Always return STDERR with consistent line limiting
-                stderr: get_last_n_lines(&stderr, stderr_lines),
+                stderr: stderr.render(0, stderr_lines),
                 stopped_after: false,
             })
         }
@@ -145,8 +279,8 @@ pub async fn execute_command(
 #[allow(clippy::too_many_arguments)] // Required for comprehensive execution configuration
 async fn handle_stop_after(
     mut child: tokio::process::Child,
-    stdout_task: tokio::task::JoinHandle<String>,
-    stderr_task: tokio::task::JoinHandle<String>,
+    stdout_task: tokio::task::JoinHandle<CappedOutput>,
+    stderr_task: tokio::task::JoinHandle<CappedOutput>,
     stop_after: u64,
     termination_signal: TerminationSignal,
     termination_grace_period: u64,
@@ -171,14 +305,14 @@ async fn handle_stop_after(
             stop_after_handle.abort();
             match result {
                 Ok(status) => {
-                    let exit_code = status.code().unwrap_or(0);
+                    let exit_code = exit_code_from_status(&status);
                     let stdout = stdout_task.await.unwrap_or_default();
                     let stderr = stderr_task.await.unwrap_or_default();
                     Ok(ExecutionResult {
                         exit_code,
-                        stdout: apply_line_limits_to_string(&stdout, output_head_lines, output_tail_lines),
+                        stdout: stdout.render(output_head_lines, output_tail_lines),
                         // Always return STDERR with consistent line limiting
-                        stderr: get_last_n_lines(&stderr, stderr_lines),
+                        stderr: stderr.render(0, stderr_lines),
                         stopped_after: false,
                     })
                 }
@@ -197,14 +331,14 @@ async fn handle_stop_after(
             sleep(Duration::from_secs(termination_grace_period + 1)).await;
             // Check if process exited
             if let Ok(Some(status)) = child.try_wait() {
-                let exit_code = status.code().unwrap_or(0);
+                let exit_code = exit_code_from_status(&status);
                 let stdout = stdout_task.await.unwrap_or_default();
                 let stderr = stderr_task.await.unwrap_or_default();
                 Ok(ExecutionResult {
                     exit_code,
-                    stdout: apply_line_limits_to_string(&stdout, output_head_lines, output_tail_lines),
+                    stdout: stdout.render(output_head_lines, output_tail_lines),
                     // Always return STDERR with consistent line limiting
-                    stderr: get_last_n_lines(&stderr, stderr_lines),
+                    stderr: stderr.render(0, stderr_lines),
                     stopped_after: true,
                 })
             } else {
@@ -217,9 +351,9 @@ async fn handle_stop_after(
                 let stderr = stderr_task.await.unwrap_or_default();
                 Ok(ExecutionResult {
                     exit_code: 0,
-                    stdout: apply_line_limits_to_string(&stdout, output_head_lines, output_tail_lines),
+                    stdout: stdout.render(output_head_lines, output_tail_lines),
                     // Always return STDERR with consistent line limiting
-                    stderr: get_last_n_lines(&stderr, stderr_lines),
+                    stderr: stderr.render(0, stderr_lines),
                     stopped_after: true,
                 })
             }
@@ -231,8 +365,8 @@ async fn handle_stop_after(
 #[allow(clippy::too_many_arguments)] // Required for comprehensive execution configuration
 async fn handle_timeout(
     mut child: tokio::process::Child,
-    stdout_task: tokio::task::JoinHandle<String>,
-    stderr_task: tokio::task::JoinHandle<String>,
+    stdout_task: tokio::task::JoinHandle<CappedOutput>,
+    stderr_task: tokio::task::JoinHandle<CappedOutput>,
     termination_signal: TerminationSignal,
     termination_grace_period: u64,
     timeout_secs: u64,
@@ -249,13 +383,13 @@ async fn handle_timeout(
     sleep(Duration::from_secs(termination_grace_period + 1)).await;
     // Check if process is still running
     if let Ok(Some(status)) = child.try_wait() {
-        let exit_code = status.code().unwrap_or(1);
+        let exit_code = exit_code_from_status(&status);
         let stdout = stdout_task.await.unwrap_or_default();
         let stderr = stderr_task.await.unwrap_or_default();
         Ok(ExecutionResult {
             exit_code,
-            stdout: apply_line_limits_to_string(&stdout, output_head_lines, output_tail_lines),
-            stderr: get_last_n_lines(&stderr, stderr_lines),
+            stdout: stdout.render(output_head_lines, output_tail_lines),
+            stderr: stderr.render(0, stderr_lines),
             stopped_after: false,
         })
     } else {
@@ -269,6 +403,15 @@ async fn handle_timeout(
         }
         .into())
     }
+}
+
+/// Derive an exit code from a process status.
+///
+/// `ExitStatus::code()` returns `None` when the process was terminated by a
+/// signal (Unix). Reporting `0` in that case would mislead callers into
+/// thinking a killed process succeeded, so we report `-1` instead.
+fn exit_code_from_status(status: &std::process::ExitStatus) -> i32 {
+    status.code().unwrap_or(-1)
 }
 
 /// Apply head and tail line limits to output string
@@ -615,7 +758,7 @@ mod tests {
     #[tokio::test]
     async fn test_stderr_line_limiting() {
         // Verify STDERR line limiting is applied consistently
-        let stderr_lines = [
+        let stderr_lines = vec![
             "error line 1",
             "error line 2",
             "error line 3",
@@ -694,16 +837,16 @@ mod tests {
         )
         .await;
 
-        // Should succeed (stop_after returns success)
-        if let Ok(result) = result {
-            // On most systems, this should be stopped_after
-            // But on very fast systems or if timing is off, it might complete normally
-            // So we just check that it succeeded
-            assert_eq!(result.exit_code, 0);
-        } else {
-            // If it fails, that's unexpected but not a test failure
-            // (could be system-specific)
-        }
+        // Should succeed (stop_after returns Ok rather than a timeout error).
+        // The process is terminated by a signal, so its exit code is not a
+        // meaningful success indicator: depending on the race between the
+        // signal and reaping it can be -1 (signalled) or 0 (force-kill path).
+        // We therefore only assert that the call returned Ok.
+        assert!(
+            result.is_ok(),
+            "stop_after should return Ok, got: {:?}",
+            result.err()
+        );
     }
 
     #[tokio::test]
@@ -745,6 +888,61 @@ mod tests {
 
         assert_eq!(result.exit_code, 0);
         assert!(result.stdout.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_collect_capped_lines_stops_at_byte_ceiling() {
+        // A reader that would yield far more than the cap allows. Each line is
+        // 10 bytes ("xxxxxxxxx\n"); with a 100-byte cap we must stop after ~10
+        // lines instead of reading the whole (1 MiB) input.
+        let big = "xxxxxxxxx\n".repeat(100_000); // ~1 MiB
+        let reader = std::io::Cursor::new(big.into_bytes());
+
+        // keep everything (head/tail both budgeted high) so only the byte cap bounds us.
+        let out = collect_capped_lines_with_cap(reader, 1000, 1000, 100).await;
+
+        assert!(out.capped, "expected the byte ceiling to cut reading short");
+        // We must have read only a tiny fraction of the 100k available lines.
+        assert!(
+            out.total_lines <= 11,
+            "read too many lines before capping: {}",
+            out.total_lines
+        );
+    }
+
+    #[tokio::test]
+    async fn test_high_volume_command_is_bounded_by_line_limits() {
+        // `yes` emits "y\n" forever; without bounded reading this would buffer
+        // without limit and OOM. With head/tail limits + the byte ceiling the
+        // result must be small and the process must be reaped.
+        let result = execute_command(
+            "/bin/sh",
+            &[
+                "-c".to_string(),
+                // Cap the producer so the test can't run away even if the
+                // bounding logic regresses; the executor's own cap is the real
+                // safety net but we don't want a 256 MiB test.
+                "yes | head -n 5000000".to_string(),
+            ],
+            10,
+            None,
+            TerminationSignal::Sigterm,
+            2,
+            5,
+            5,
+            50,
+        )
+        .await
+        .unwrap();
+
+        // Only head + tail (+ separator) should be retained, not all 5M lines.
+        let line_count = result.stdout.lines().count();
+        assert!(
+            line_count <= 12,
+            "stdout should be line-limited, got {} lines",
+            line_count
+        );
+        assert!(result.stdout.contains("lines omitted"));
     }
 
     #[tokio::test]
