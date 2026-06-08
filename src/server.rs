@@ -271,14 +271,15 @@ impl McpServer {
 
             // Positional parameters
             if let Some(str_value) = value.as_str() {
-                // Special handling for "args" parameter: parse shell-like arguments
-                // This handles quoted strings, escaped characters, and multi-line arguments
-                if param_name == "args" {
+                // Opt-in shell-style splitting: when `split_args = true`, parse
+                // the value into multiple arguments honouring quotes, escapes,
+                // and multi-line content. Otherwise pass the entire value as a
+                // single argument, preserving multi-line content, heredocs, and
+                // special characters.
+                if param.split_args {
                     let parsed_args = parse_shell_args(str_value)?;
                     tool_args.extend(parsed_args);
                 } else {
-                    // For other parameters, pass the entire value as a single argument
-                    // This preserves multi-line content, heredocs, and special characters
                     tool_args.push(str_value.to_string());
                 }
             } else {
@@ -797,5 +798,77 @@ EOF"#;
 
         assert_eq!(result.exit_code, 0);
         assert!(result.stdout.contains("hello world with spaces"));
+    }
+
+    #[tokio::test]
+    async fn test_args_param_without_split_is_passed_verbatim() {
+        // A parameter literally named "args" must NOT be shell-split unless
+        // split_args is set. It should be passed through as a single argument.
+        let config_toml = r#"
+[groups.test]
+  [[groups.test.tools]]
+  name = "echo"
+  description = "Echo"
+  command = "/bin/echo"
+  arg_order = ["args"]
+
+  [groups.test.tools.parameters.args]
+  description = "Args"
+  required = true
+"#;
+        let config = Config::from_str(config_toml).unwrap();
+        let server = McpServer::new(config).unwrap();
+
+        // Two space-separated words: as a single argument echo prints them with
+        // a single space and no splitting side effects.
+        let result = server
+            .handle_tool_call("test_echo", &serde_json::json!({ "args": "alpha beta" }))
+            .await
+            .unwrap();
+
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout.trim(), "alpha beta");
+    }
+
+    #[tokio::test]
+    async fn test_split_args_opt_in_splits_value() {
+        // With split_args = true on a positional parameter (any name), the value
+        // is parsed shell-style into multiple arguments. We use `printf '%s\n'`
+        // so each resulting argument lands on its own output line.
+        let config_toml = r#"
+[groups.test]
+  [[groups.test.tools]]
+  name = "printf"
+  description = "printf each arg on a line"
+  command = "/usr/bin/printf"
+  arg_order = ["fmt", "items"]
+
+  [groups.test.tools.parameters.fmt]
+  description = "format"
+  required = true
+
+  [groups.test.tools.parameters.items]
+  description = "items"
+  required = true
+  split_args = true
+"#;
+        let config = Config::from_str(config_toml).unwrap();
+        let server = McpServer::new(config).unwrap();
+
+        let result = server
+            .handle_tool_call(
+                "test_printf",
+                &serde_json::json!({
+                    "fmt": "%s\n",
+                    "items": r#"one "two three" four"#,
+                }),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.exit_code, 0);
+        let lines: Vec<&str> = result.stdout.lines().collect();
+        // Splitting yields three args: one / two three / four.
+        assert_eq!(lines, vec!["one", "two three", "four"]);
     }
 }

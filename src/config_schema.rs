@@ -45,6 +45,7 @@ fn build_generated_example() -> crate::config::ConfigToml {
             flag: None,
             takes_value: false,
             required: true,
+            split_args: false,
         },
     );
 
@@ -151,6 +152,7 @@ Each parameter has:
 - `flag` (optional): Emit this CLI flag when the parameter is provided (e.g. `-r`, `-n`)
 - `takes_value` (optional, boolean): If `true`, emit `flag` followed by the parameter value (e.g. `-n 50`)
 - `required`: Whether parameter is required (default: false)
+- `split_args` (optional, boolean): If `true`, split a positional parameter's value into multiple arguments using shell-style parsing (quotes, escapes, multi-line). Defaults to `false` (the value is passed through as a single argument). Only meaningful when `flag` is not set.
 
 ## WebSocket Authentication Configuration
 
