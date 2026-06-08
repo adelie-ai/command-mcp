@@ -1,7 +1,21 @@
-// Integration tests for MCP handshake and initialization
+// Integration tests for the MCP handshake, driven through mcp-core's Session
+// (which now owns the JSON-RPC protocol) wrapping gen-mcp's dynamic service.
 
 use genmcp::config::Config;
-use genmcp::server::McpServer;
+use genmcp::service::GenMcpService;
+use mcp_core::{ServerConfig, ServerCore, Session};
+use serde_json::json;
+use std::sync::Arc;
+
+fn session_for(toml: &str) -> Session {
+    let config = Config::from_str(toml).unwrap();
+    let service = GenMcpService::new(config).unwrap();
+    let core = ServerCore::new(
+        ServerConfig::new("genmcp", env!("CARGO_PKG_VERSION")),
+        Arc::new(service),
+    );
+    Session::new(core)
+}
 
 #[tokio::test]
 async fn test_full_initialization_flow() {
@@ -15,30 +29,41 @@ default_timeout = 30
   command = "/bin/echo"
 "#;
 
-    let config = Config::from_str(toml).unwrap();
-    let server = McpServer::new(config).unwrap();
+    let mut session = session_for(toml);
 
-    // Initialize
-    let capabilities = server
-        .handle_initialize("2024-11-05", &serde_json::json!({}))
-        .await
-        .unwrap();
-
-    assert!(capabilities.get("protocolVersion").is_some());
-    assert_eq!(
-        capabilities
-            .get("protocolVersion")
-            .unwrap()
-            .as_str()
-            .unwrap(),
-        "2024-11-05"
+    // Initialize — mcp-core negotiates the requested version and does NOT leak a
+    // top-level `tools` key (that was a gen-mcp quirk; the spec-correct shape
+    // returns tools only via tools/list).
+    let init = session
+        .handle_message(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": { "protocolVersion": "2024-11-05", "capabilities": {} }
+        }))
+        .await;
+    let result = &init.response.unwrap()["result"];
+    assert_eq!(result["protocolVersion"], "2024-11-05");
+    assert_eq!(result["serverInfo"]["name"], "genmcp");
+    assert!(
+        result.get("tools").is_none(),
+        "initialize must not embed a top-level tools key"
     );
 
-    // Send initialized notification
-    server.handle_initialized().await.unwrap();
-    assert!(server.is_initialized().await);
+    // tools/list returns the dynamically generated tool.
+    let list = session
+        .handle_message(json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }))
+        .await;
+    let tools = list.response.unwrap()["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .clone();
+    assert_eq!(tools.len(), 1);
+    assert_eq!(tools[0]["name"], "test_group_echo");
 
-    // Shutdown
-    server.handle_shutdown().await.unwrap();
-    assert!(!server.is_initialized().await);
+    // The `initialized` notification gets no response.
+    let notif = session
+        .handle_message(json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }))
+        .await;
+    assert!(notif.response.is_none());
 }
