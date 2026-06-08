@@ -62,6 +62,15 @@ pub struct Parameter {
     /// Whether the parameter is required
     #[serde(default = "default_false")]
     pub required: bool,
+    /// Whether to split this (positional) parameter's value into multiple
+    /// arguments using shell-style parsing (quotes, escapes, multi-line) rather
+    /// than passing it through as a single argument.
+    ///
+    /// Opt-in; defaults to `false`. Only meaningful for positional parameters
+    /// (i.e. when `flag` is not set). Use this for a parameter that should
+    /// expand to several CLI arguments, e.g. a free-form `args` string.
+    #[serde(default = "default_false")]
+    pub split_args: bool,
 }
 
 fn default_false() -> bool {

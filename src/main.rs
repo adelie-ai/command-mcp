@@ -386,8 +386,11 @@ async fn validate_jwt_token(
         // Token is valid
         Ok(())
     } else {
-        // Stub mode: just check token exists (for backward compatibility)
-        Ok(())
+        // No verification method is configured (neither JWKS nor a secret), yet
+        // a token was required. Accepting any token here would be an auth
+        // bypass, so fail closed. To run without auth, omit the
+        // [websocket_auth] section entirely.
+        Err(TransportError::Authentication("no auth method configured".to_string()).into())
     }
 }
 
@@ -551,4 +554,89 @@ fn jsonrpc_error_response(
             "data": data,
         },
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use genmcp::server::WebSocketAuth;
+
+    fn bearer_headers(token: &str) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "authorization",
+            format!("Bearer {}", token).parse().expect("valid header"),
+        );
+        headers
+    }
+
+    #[tokio::test]
+    async fn validate_jwt_rejects_when_no_auth_method_configured() {
+        // Auth enabled but neither a secret nor JWKS/OIDC is configured. A token
+        // is present; it must NOT be accepted (previously the stub accepted any
+        // non-empty token, an authentication bypass).
+        let auth = WebSocketAuth {
+            enabled: true,
+            secret: None,
+            oidc_issuer: None,
+            jwks_url: None,
+        };
+        let headers = bearer_headers("anything-at-all");
+
+        let result = validate_jwt_token(&headers, &auth, None).await;
+        assert!(
+            result.is_err(),
+            "no auth method configured must reject the token, got Ok"
+        );
+    }
+
+    #[tokio::test]
+    async fn validate_jwt_rejects_missing_authorization_header() {
+        let auth = WebSocketAuth {
+            enabled: true,
+            secret: Some("topsecret".to_string()),
+            oidc_issuer: None,
+            jwks_url: None,
+        };
+        let headers = HeaderMap::new();
+
+        let result = validate_jwt_token(&headers, &auth, None).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn validate_jwt_accepts_valid_secret_signed_token() {
+        let secret = "topsecret";
+        let auth = WebSocketAuth {
+            enabled: true,
+            secret: Some(secret.to_string()),
+            oidc_issuer: None,
+            jwks_url: None,
+        };
+
+        // Mint a token signed with the same secret. Default validation requires
+        // an `exp` claim, so include one in the future.
+        #[derive(serde::Serialize)]
+        struct Claims {
+            sub: String,
+            exp: usize,
+        }
+        let claims = Claims {
+            sub: "test".to_string(),
+            exp: 9_999_999_999,
+        };
+        let token = jsonwebtoken::encode(
+            &jsonwebtoken::Header::default(),
+            &claims,
+            &jsonwebtoken::EncodingKey::from_secret(secret.as_ref()),
+        )
+        .expect("encode jwt");
+
+        let headers = bearer_headers(&token);
+        let result = validate_jwt_token(&headers, &auth, None).await;
+        assert!(
+            result.is_ok(),
+            "valid secret-signed token should pass: {result:?}"
+        );
+    }
 }

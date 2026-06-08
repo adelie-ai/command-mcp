@@ -6,6 +6,11 @@
 use crate::error::{Result, TransportError};
 use tokio::io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, Stdin, Stdout};
 
+/// Upper bound on the `Content-Length` of a single framed JSON-RPC message.
+/// A client-supplied length above this is rejected before any allocation so a
+/// malicious or buggy peer cannot make us allocate an unbounded buffer.
+const MAX_CONTENT_LENGTH: usize = 64 * 1024 * 1024;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StdioFraming {
     /// Detect framing based on the first successfully read message.
@@ -29,6 +34,19 @@ fn parse_content_length_header(line: &str) -> Option<usize> {
     }
     let value = value.trim();
     value.parse::<usize>().ok()
+}
+
+/// Reject a `Content-Length` that exceeds [`MAX_CONTENT_LENGTH`] before any
+/// buffer is allocated for it.
+fn check_content_length(content_length: usize) -> Result<()> {
+    if content_length > MAX_CONTENT_LENGTH {
+        return Err(TransportError::InvalidMessage(format!(
+            "Content-Length {} exceeds maximum of {} bytes",
+            content_length, MAX_CONTENT_LENGTH
+        ))
+        .into());
+    }
+    Ok(())
 }
 
 /// STDIN/STDOUT transport for MCP
@@ -174,6 +192,10 @@ impl StdioTransportHandler {
             ))
         })?;
 
+        // Reject oversized frames before allocating to avoid OOM from a
+        // hostile or buggy peer advertising a huge Content-Length.
+        check_content_length(content_length)?;
+
         // Read headers until blank line.
         loop {
             let mut header_line = String::new();
@@ -232,5 +254,21 @@ mod tests {
         let handler = StdioTransportHandler::new();
         // Just verify it can be created
         let _ = handler;
+    }
+
+    #[test]
+    fn test_check_content_length_accepts_within_limit() {
+        assert!(check_content_length(0).is_ok());
+        assert!(check_content_length(1024).is_ok());
+        assert!(check_content_length(MAX_CONTENT_LENGTH).is_ok());
+    }
+
+    #[test]
+    fn test_check_content_length_rejects_oversize() {
+        let result = check_content_length(MAX_CONTENT_LENGTH + 1);
+        assert!(result.is_err());
+        // A wildly oversized frame (e.g. 4 GiB) must be rejected without
+        // attempting to allocate it.
+        assert!(check_content_length(4 * 1024 * 1024 * 1024).is_err());
     }
 }
