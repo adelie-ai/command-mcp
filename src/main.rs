@@ -175,6 +175,24 @@ mod tests {
         assert!(matches!(resolve_ws_auth(None, None, None), WsAuth::None));
     }
 
+    /// MF-13: `[websocket_auth] enabled = true` with no method configured must
+    /// fail closed — an error, never a silent `WsAuth::None`. Config::validate
+    /// rejects this today, so the branch is defence-in-depth; it must not be a
+    /// fail-open fallback if validation and this mapping ever drift.
+    #[test]
+    fn ws_auth_enabled_without_method_fails_closed() {
+        let auth = gen_mcp::config::WebSocketAuth {
+            enabled: true,
+            secret: None,
+            oidc_issuer: None,
+            jwks_url: None,
+        };
+        assert!(
+            !matches!(resolve_ws_auth(Some(&auth), None, None), WsAuth::None),
+            "auth enabled but no method configured must not silently disable auth"
+        );
+    }
+
     #[test]
     fn ws_auth_none_when_disabled() {
         let auth = gen_mcp::config::WebSocketAuth {
