@@ -1,5 +1,4 @@
 #![deny(warnings)]
-#![allow(dead_code)] // Types will be used as implementation progresses
 
 // Secure command execution with timeouts
 
@@ -42,8 +41,6 @@ struct CappedOutput {
     tail: VecDeque<String>,
     /// Total number of lines observed (may exceed head + tail).
     total_lines: usize,
-    /// Whether reading was cut short because the byte ceiling was reached.
-    capped: bool,
 }
 
 impl CappedOutput {
@@ -114,7 +111,6 @@ where
     let mut tail: VecDeque<String> = VecDeque::new();
     let mut total_lines = 0usize;
     let mut bytes = 0usize;
-    let mut capped = false;
     // When both budgets are 0 we keep everything (still byte-capped); collect
     // those lines into `tail` so `render` can emit them all.
     let keep_all = keep_head == 0 && keep_tail == 0;
@@ -146,7 +142,6 @@ where
         total_lines += 1;
 
         if bytes >= max_bytes {
-            capped = true;
             break;
         }
     }
@@ -155,7 +150,6 @@ where
         head,
         tail,
         total_lines,
-        capped,
     }
 }
 
@@ -414,64 +408,6 @@ fn exit_code_from_status(status: &std::process::ExitStatus) -> i32 {
     status.code().unwrap_or(-1)
 }
 
-/// Apply head and tail line limits to output string
-fn apply_line_limits_to_string(output: &str, head_lines: u64, tail_lines: u64) -> String {
-    let lines: Vec<&str> = output.lines().collect();
-    apply_line_limits(&lines, head_lines, tail_lines)
-}
-
-/// Apply head and tail line limits to output
-fn apply_line_limits(lines: &[&str], head_lines: u64, tail_lines: u64) -> String {
-    let total_lines = lines.len();
-    let head = head_lines as usize;
-    let tail = tail_lines as usize;
-
-    if total_lines <= head + tail || (head == 0 && tail == 0) {
-        // Return all lines if within limits, or if both limits are 0
-        lines.join("\n")
-    } else if head > 0 && tail > 0 {
-        // Return head + tail with separator
-        let head_part: Vec<&str> = lines.iter().take(head).copied().collect();
-        let tail_part: Vec<&str> = lines.iter().skip(total_lines - tail).copied().collect();
-        format!(
-            "{}\n... ({} lines omitted) ...\n{}",
-            head_part.join("\n"),
-            total_lines - head - tail,
-            tail_part.join("\n")
-        )
-    } else if head > 0 {
-        // Head only - no separator needed
-        lines
-            .iter()
-            .take(head)
-            .copied()
-            .collect::<Vec<_>>()
-            .join("\n")
-    } else {
-        // Tail only - no separator needed
-        lines
-            .iter()
-            .skip(total_lines - tail)
-            .copied()
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-}
-
-/// Get last N lines from stderr
-fn get_last_n_lines(stderr: &str, n: u64) -> String {
-    let lines: Vec<&str> = stderr.lines().collect();
-    let limit = (n as usize).min(lines.len());
-    lines
-        .iter()
-        .rev()
-        .take(limit)
-        .rev()
-        .copied()
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 /// Terminate a process gracefully
 async fn terminate_process(pid: u32, signal: TerminationSignal, grace_period: u64) {
     #[cfg(unix)]
@@ -601,85 +537,6 @@ mod tests {
         .unwrap();
 
         assert_eq!(result.exit_code, 42);
-    }
-
-    #[tokio::test]
-    async fn test_output_line_limiting_head_only() {
-        // Create output with many lines
-        let lines: Vec<String> = (1..=200).map(|i| format!("line {}", i)).collect();
-        let output = lines.join("\n");
-
-        let limited = apply_line_limits_to_string(&output, 10, 0);
-        let limited_lines: Vec<&str> = limited.lines().collect();
-
-        // When head_only, should return exactly 10 lines (no separator)
-        assert_eq!(limited_lines.len(), 10);
-        assert_eq!(limited_lines[0], "line 1");
-        assert_eq!(limited_lines[9], "line 10");
-    }
-
-    #[tokio::test]
-    async fn test_output_line_limiting_tail_only() {
-        // Create output with many lines
-        let lines: Vec<String> = (1..=200).map(|i| format!("line {}", i)).collect();
-        let output = lines.join("\n");
-
-        let limited = apply_line_limits_to_string(&output, 0, 10);
-        let limited_lines: Vec<&str> = limited.lines().collect();
-
-        // When tail_only, should return exactly 10 lines (no separator)
-        assert_eq!(limited_lines.len(), 10);
-        assert_eq!(limited_lines[0], "line 191");
-        assert_eq!(limited_lines[9], "line 200");
-    }
-
-    #[tokio::test]
-    async fn test_output_line_limiting_head_and_tail() {
-        // Create output with many lines
-        let lines: Vec<String> = (1..=200).map(|i| format!("line {}", i)).collect();
-        let output = lines.join("\n");
-
-        let limited = apply_line_limits_to_string(&output, 5, 5);
-        let limited_lines: Vec<&str> = limited.lines().collect();
-
-        // Should have: 5 head + separator + 5 tail = 11 lines
-        assert!(limited_lines.len() >= 10);
-        assert!(limited.contains("line 1"));
-        assert!(limited.contains("line 200"));
-        assert!(limited.contains("omitted"));
-    }
-
-    #[tokio::test]
-    async fn test_output_line_limiting_within_limits() {
-        // Create output with few lines
-        let output = "line 1\nline 2\nline 3";
-
-        let limited = apply_line_limits_to_string(output, 10, 10);
-
-        // Should return all lines since within limits
-        assert_eq!(limited, output);
-    }
-
-    #[tokio::test]
-    async fn test_get_last_n_lines() {
-        let stderr = "error 1\nerror 2\nerror 3\nerror 4\nerror 5";
-        let last_2 = get_last_n_lines(stderr, 2);
-        let lines: Vec<&str> = last_2.lines().collect();
-
-        assert_eq!(lines.len(), 2);
-        assert_eq!(lines[0], "error 4");
-        assert_eq!(lines[1], "error 5");
-    }
-
-    #[tokio::test]
-    async fn test_get_last_n_lines_more_than_available() {
-        let stderr = "error 1\nerror 2";
-        let last_10 = get_last_n_lines(stderr, 10);
-        let lines: Vec<&str> = last_10.lines().collect();
-
-        assert_eq!(lines.len(), 2);
-        assert_eq!(lines[0], "error 1");
-        assert_eq!(lines[1], "error 2");
     }
 
     #[tokio::test]
@@ -901,8 +758,8 @@ mod tests {
         // keep everything (head/tail both budgeted high) so only the byte cap bounds us.
         let out = collect_capped_lines_with_cap(reader, 1000, 1000, 100).await;
 
-        assert!(out.capped, "expected the byte ceiling to cut reading short");
-        // We must have read only a tiny fraction of the 100k available lines.
+        // The byte ceiling must cut reading short: only a tiny fraction of the
+        // 100k available lines may have been read.
         assert!(
             out.total_lines <= 11,
             "read too many lines before capping: {}",

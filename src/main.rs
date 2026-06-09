@@ -93,7 +93,7 @@ async fn main() -> Result<()> {
                 config.websocket_auth.as_ref(),
                 local.jwt_secret,
                 local.oidc_issuer,
-            );
+            )?;
 
             // Build the dynamic, config-driven service.
             let service = GenMcpService::new(config)?;
@@ -131,36 +131,44 @@ async fn main() -> Result<()> {
 /// over `--jwt-secret`, and both override the config file. The config file's
 /// validation already rejects specifying both a secret and an OIDC/JWKS method,
 /// so the config branch is unambiguous.
+///
+/// Fails closed (MF-13): auth enabled with no method configured is an error,
+/// never a silent `WsAuth::None`. Config::validate already rejects that shape,
+/// so this is defence-in-depth against the two ever drifting.
 fn resolve_ws_auth(
     config_auth: Option<&gen_mcp::config::WebSocketAuth>,
     jwt_secret_override: Option<String>,
     oidc_issuer_override: Option<String>,
-) -> WsAuth {
+) -> Result<WsAuth> {
     // CLI overrides take precedence (OIDC over secret), matching the old server.
     if let Some(issuer) = oidc_issuer_override {
-        return WsAuth::OidcIssuer(issuer);
+        return Ok(WsAuth::OidcIssuer(issuer));
     }
     if let Some(secret) = jwt_secret_override {
-        return WsAuth::Secret(secret);
+        return Ok(WsAuth::Secret(secret));
     }
 
     // Otherwise derive from the config file's [websocket_auth] section.
     match config_auth {
         // Disabled or absent → no auth.
-        None => WsAuth::None,
-        Some(auth) if !auth.enabled => WsAuth::None,
+        None => Ok(WsAuth::None),
+        Some(auth) if !auth.enabled => Ok(WsAuth::None),
         Some(auth) => {
             // Validation guarantees exactly one method is set when enabled.
             if let Some(issuer) = &auth.oidc_issuer {
-                WsAuth::OidcIssuer(issuer.clone())
+                Ok(WsAuth::OidcIssuer(issuer.clone()))
             } else if let Some(jwks_url) = &auth.jwks_url {
-                WsAuth::Jwks(jwks_url.clone())
+                Ok(WsAuth::Jwks(jwks_url.clone()))
             } else if let Some(secret) = &auth.secret {
-                WsAuth::Secret(secret.clone())
+                Ok(WsAuth::Secret(secret.clone()))
             } else {
-                // Unreachable in practice (validation requires a method when
-                // enabled), but fail closed rather than silently disabling auth.
-                WsAuth::None
+                Err(gen_mcp::error::ConfigError::InvalidValue {
+                    field: "websocket_auth".to_string(),
+                    message: "auth is enabled but no method is configured \
+                              (set one of: secret, jwks_url, oidc_issuer)"
+                        .to_string(),
+                }
+                .into())
             }
         }
     }
@@ -172,7 +180,10 @@ mod tests {
 
     #[test]
     fn ws_auth_none_when_config_absent() {
-        assert!(matches!(resolve_ws_auth(None, None, None), WsAuth::None));
+        assert!(matches!(
+            resolve_ws_auth(None, None, None).unwrap(),
+            WsAuth::None
+        ));
     }
 
     /// MF-13: `[websocket_auth] enabled = true` with no method configured must
@@ -188,7 +199,7 @@ mod tests {
             jwks_url: None,
         };
         assert!(
-            !matches!(resolve_ws_auth(Some(&auth), None, None), WsAuth::None),
+            resolve_ws_auth(Some(&auth), None, None).is_err(),
             "auth enabled but no method configured must not silently disable auth"
         );
     }
@@ -202,7 +213,7 @@ mod tests {
             jwks_url: None,
         };
         assert!(matches!(
-            resolve_ws_auth(Some(&auth), None, None),
+            resolve_ws_auth(Some(&auth), None, None).unwrap(),
             WsAuth::None
         ));
     }
@@ -215,7 +226,7 @@ mod tests {
             oidc_issuer: None,
             jwks_url: None,
         };
-        match resolve_ws_auth(Some(&auth), None, None) {
+        match resolve_ws_auth(Some(&auth), None, None).unwrap() {
             WsAuth::Secret(s) => assert_eq!(s, "topsecret"),
             other => panic!("expected Secret, got {other:?}"),
         }
@@ -229,7 +240,7 @@ mod tests {
             oidc_issuer: Some("https://issuer.example".into()),
             jwks_url: None,
         };
-        match resolve_ws_auth(Some(&auth), None, None) {
+        match resolve_ws_auth(Some(&auth), None, None).unwrap() {
             WsAuth::OidcIssuer(u) => assert_eq!(u, "https://issuer.example"),
             other => panic!("expected OidcIssuer, got {other:?}"),
         }
@@ -243,7 +254,7 @@ mod tests {
             oidc_issuer: None,
             jwks_url: Some("https://issuer.example/jwks.json".into()),
         };
-        match resolve_ws_auth(Some(&auth), None, None) {
+        match resolve_ws_auth(Some(&auth), None, None).unwrap() {
             WsAuth::Jwks(u) => assert_eq!(u, "https://issuer.example/jwks.json"),
             other => panic!("expected Jwks, got {other:?}"),
         }
@@ -257,7 +268,7 @@ mod tests {
             oidc_issuer: Some("https://issuer.example".into()),
             jwks_url: None,
         };
-        match resolve_ws_auth(Some(&auth), Some("override".into()), None) {
+        match resolve_ws_auth(Some(&auth), Some("override".into()), None).unwrap() {
             WsAuth::Secret(s) => assert_eq!(s, "override"),
             other => panic!("expected Secret override, got {other:?}"),
         }
@@ -269,7 +280,9 @@ mod tests {
             None,
             Some("s".into()),
             Some("https://issuer.example".into()),
-        ) {
+        )
+        .unwrap()
+        {
             WsAuth::OidcIssuer(u) => assert_eq!(u, "https://issuer.example"),
             other => panic!("expected OidcIssuer override, got {other:?}"),
         }
