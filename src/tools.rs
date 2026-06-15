@@ -621,11 +621,9 @@ default_timeout_max = 300
         assert!(result.is_err());
 
         if let Err(e) = result {
-            if let crate::error::GenMcpError::Mcp(crate::error::McpError::OverrideExceedsMax {
-                field,
-                value,
-                max,
-            }) = e
+            if let crate::error::CommandMcpError::Mcp(
+                crate::error::McpError::OverrideExceedsMax { field, value, max },
+            ) = e
             {
                 assert_eq!(field, "timeout");
                 assert_eq!(value, 500);

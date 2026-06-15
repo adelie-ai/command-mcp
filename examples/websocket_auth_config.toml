@@ -64,8 +64,8 @@ oidc_issuer = "https://your-oidc-provider.com"
 # CLI Override
 # ============================================================================
 # CLI options take precedence over config file:
-#   gen-mcp serve --config config.toml --mode websocket --oidc-issuer "https://provider.com"
-#   gen-mcp serve --config config.toml --mode websocket --jwt-secret "cli-secret"
+#   command-mcp serve --config config.toml --mode websocket --oidc-issuer "https://provider.com"
+#   command-mcp serve --config config.toml --mode websocket --jwt-secret "cli-secret"
 # The --oidc-issuer option is preferred over --jwt-secret.
 
 # ============================================================================

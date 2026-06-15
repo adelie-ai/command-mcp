@@ -1,13 +1,13 @@
 #![deny(warnings)]
 #![allow(dead_code)] // Error types will be used as modules are implemented
 
-// Error types for the gen-mcp crate
+// Error types for the command-mcp crate
 
 use thiserror::Error;
 
-/// Main error type for the gen-mcp application
+/// Main error type for the command-mcp application
 #[derive(Error, Debug)]
-pub enum GenMcpError {
+pub enum CommandMcpError {
     /// Configuration parsing or validation errors
     #[error("Configuration error: {0}")]
     Config(#[from] ConfigError),
@@ -145,4 +145,4 @@ pub enum ToolRegistryError {
 }
 
 /// Result type alias for convenience
-pub type Result<T> = std::result::Result<T, GenMcpError>;
+pub type Result<T> = std::result::Result<T, CommandMcpError>;

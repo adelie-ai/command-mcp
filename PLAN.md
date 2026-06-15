@@ -19,7 +19,7 @@ flowchart TB
 ## Project Structure
 
 ```
-genmcp/
+command-mcp/
 ├── Cargo.toml
 ├── Dockerfile
 ├── README.md                 # Main project documentation
@@ -157,7 +157,7 @@ Key features:
    - Validate protocol version compatibility
    - Respond with server capabilities including:
      - Protocol version
-     - Server name: "genmcp" (or configurable)
+     - Server name: "command-mcp" (or configurable)
      - Server version
      - Supported protocol features
      - Available tools (registered from TOML config)

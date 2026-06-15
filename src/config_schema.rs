@@ -40,10 +40,10 @@ pub fn output_generated_example_config() -> Result<()> {
 /// numeric `minimum`, a flagged param, and a tool with `output = "json"`. Every
 /// per-tool/per-parameter override is optional with a back-compat default, so
 /// the example stays short. `cargo test` asserts this string parses.
-const EXAMPLE_CONFIG_TOML: &str = r#"# gen-mcp example config. Generate with: gen-mcp config example > config.toml
+const EXAMPLE_CONFIG_TOML: &str = r#"# command-mcp example config. Generate with: command-mcp config example > config.toml
 #
 # Tools are grouped; the group's `default_*` keys supply timeouts/output limits
-# so individual tools stay clean. See `gen-mcp config schema` for every field.
+# so individual tools stay clean. See `command-mcp config schema` for every field.
 
 # Advertise the runtime-override knobs (timeout, stop_after, output_*_lines,
 # stderr_lines) in each tool's input schema. They are honored either way; this
@@ -102,11 +102,11 @@ pub fn output_docs_generated() -> Result<()> {
 
 /// Output Markdown documentation for the configuration file format (hand-written).
 pub fn output_docs_curated() -> Result<()> {
-    let docs = r#"# gen-mcp Configuration Schema
+    let docs = r#"# command-mcp Configuration Schema
 
 ## Overview
 
-The gen-mcp configuration file uses TOML format and organizes tools into groups.
+The command-mcp configuration file uses TOML format and organizes tools into groups.
 
 ## Top-level keys
 
@@ -183,15 +183,15 @@ Optional `[websocket_auth]` section for WebSocket mode:
 fn render_markdown_docs_from_schema(root: &RootSchema) -> String {
     let mut out = String::new();
 
-    out.push_str("# gen-mcp Configuration (generated)\n\n");
+    out.push_str("# command-mcp Configuration (generated)\n\n");
     out.push_str(
         "This documentation is generated from the Rust configuration structs (field doc comments + schema), so it stays in sync with the running binary.\n\n",
     );
     out.push_str("## Quick commands\n\n");
-    out.push_str("- `gen-mcp config schema` (generated JSON Schema)\n");
-    out.push_str("- `gen-mcp config example` (minimal example TOML)\n");
-    out.push_str("- `gen-mcp config docs` (generated docs)\n");
-    out.push_str("- `gen-mcp config docs --curated` (hand-written docs)\n\n");
+    out.push_str("- `command-mcp config schema` (generated JSON Schema)\n");
+    out.push_str("- `command-mcp config example` (minimal example TOML)\n");
+    out.push_str("- `command-mcp config docs` (generated docs)\n");
+    out.push_str("- `command-mcp config docs --curated` (hand-written docs)\n\n");
 
     out.push_str("## Top-level keys\n\n");
     if let Some(obj) = root.schema.object.as_ref() {

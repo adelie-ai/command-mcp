@@ -514,7 +514,7 @@ mod tests {
         assert!(result.is_err());
         if let Err(e) = result {
             match e {
-                crate::error::GenMcpError::Execution(ExecutionError::CommandNotFound(_)) => {}
+                crate::error::CommandMcpError::Execution(ExecutionError::CommandNotFound(_)) => {}
                 _ => panic!("Expected CommandNotFound error"),
             }
         }
@@ -670,7 +670,9 @@ mod tests {
 
         // Should timeout (may succeed if system is very fast, but unlikely with 5s sleep)
         // On most systems this will timeout
-        if let Err(crate::error::GenMcpError::Execution(ExecutionError::Timeout { .. })) = result {
+        if let Err(crate::error::CommandMcpError::Execution(ExecutionError::Timeout { .. })) =
+            result
+        {
             // Expected timeout
         } else if result.is_err() {
             // May succeed on very fast systems, that's ok

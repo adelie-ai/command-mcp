@@ -1,6 +1,6 @@
 #![deny(warnings)]
 
-// Library crate for gen-mcp
+// Library crate for command-mcp
 
 pub mod config;
 pub mod config_schema;
