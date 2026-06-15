@@ -102,12 +102,12 @@ required = true
 # Development (no auth):
 #   - Omit [websocket_auth] section
 #   - Or set enabled = false
-#   - Run: gen-mcp serve --config just_with_auth.toml --mode websocket
+#   - Run: command-mcp serve --config just_with_auth.toml --mode websocket
 #
 # Production (with auth):
 #   - Set enabled = true and provide secret
 #   - Use environment variable for secret: secret = "${JWT_SECRET}"
-#   - Run: gen-mcp serve --config just_with_auth.toml --mode websocket
-#   - Or override: gen-mcp serve --config just_with_auth.toml --mode websocket --jwt-secret "${JWT_SECRET}"
+#   - Run: command-mcp serve --config just_with_auth.toml --mode websocket
+#   - Or override: command-mcp serve --config just_with_auth.toml --mode websocket --jwt-secret "${JWT_SECRET}"
 #
 # ============================================================================

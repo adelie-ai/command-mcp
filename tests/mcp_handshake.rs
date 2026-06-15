@@ -1,17 +1,17 @@
 // Integration tests for the MCP handshake, driven through mcp-core's Session
-// (which now owns the JSON-RPC protocol) wrapping gen-mcp's dynamic service.
+// (which now owns the JSON-RPC protocol) wrapping command-mcp's dynamic service.
 
-use gen_mcp::config::Config;
-use gen_mcp::service::GenMcpService;
+use command_mcp::config::Config;
+use command_mcp::service::CommandMcpService;
 use mcp_core::{ServerConfig, ServerCore, Session};
 use serde_json::json;
 use std::sync::Arc;
 
 fn session_for(toml: &str) -> Session {
     let config = Config::from_str(toml).unwrap();
-    let service = GenMcpService::new(config).unwrap();
+    let service = CommandMcpService::new(config).unwrap();
     let core = ServerCore::new(
-        ServerConfig::new("gen-mcp", env!("CARGO_PKG_VERSION")),
+        ServerConfig::new("command-mcp", env!("CARGO_PKG_VERSION")),
         Arc::new(service),
     );
     Session::new(core)
@@ -32,7 +32,7 @@ default_timeout = 30
     let mut session = session_for(toml);
 
     // Initialize — mcp-core negotiates the requested version and does NOT leak a
-    // top-level `tools` key (that was a gen-mcp quirk; the spec-correct shape
+    // top-level `tools` key (that was a command-mcp quirk; the spec-correct shape
     // returns tools only via tools/list).
     let init = session
         .handle_message(json!({
@@ -44,7 +44,7 @@ default_timeout = 30
         .await;
     let result = &init.response.unwrap()["result"];
     assert_eq!(result["protocolVersion"], "2024-11-05");
-    assert_eq!(result["serverInfo"]["name"], "gen-mcp");
+    assert_eq!(result["serverInfo"]["name"], "command-mcp");
     assert!(
         result.get("tools").is_none(),
         "initialize must not embed a top-level tools key"

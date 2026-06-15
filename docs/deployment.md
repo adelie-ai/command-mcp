@@ -1,13 +1,13 @@
 # Deployment Guide
 
-Guide for deploying gen-mcp in various environments.
+Guide for deploying command-mcp in various environments.
 
 ## Docker Deployment
 
 ### Building the Image
 
 ```bash
-docker build -t gen-mcp .
+docker build -t command-mcp .
 ```
 
 ### Running in STDIN/STDOUT Mode
@@ -15,13 +15,13 @@ docker build -t gen-mcp .
 For VS Code integration or other stdio-based MCP clients:
 
 ```bash
-docker run -i gen-mcp serve --mode stdio
+docker run -i command-mcp serve --mode stdio
 ```
 
 ### Running in WebSocket Mode
 
 ```bash
-docker run -p 8080:8080 gen-mcp serve \
+docker run -p 8080:8080 command-mcp serve \
   --mode websocket \
   --port 8080 \
   --host 0.0.0.0
@@ -33,13 +33,13 @@ Mount your configuration file:
 
 ```bash
 docker run -i -v /path/to/config.toml:/app/config.toml \
-  -e GENMCP_CONFIG=/app/config.toml \
-  gen-mcp serve --mode stdio
+  -e COMMAND_MCP_CONFIG=/app/config.toml \
+  command-mcp serve --mode stdio
 ```
 
 ### Environment Variables
 
-The Docker image runs as a non-root user (`gen-mcp`, UID 1000) for security.
+The Docker image runs as a non-root user (`command-mcp`, UID 1000) for security.
 
 ## Bare Metal Installation
 
@@ -52,40 +52,40 @@ The Docker image runs as a non-root user (`gen-mcp`, UID 1000) for security.
 
 ```bash
 git clone <repository-url>
-cd gen-mcp
+cd command-mcp
 cargo build --release
 ```
 
-The binary will be at `target/release/gen-mcp`.
+The binary will be at `target/release/command-mcp`.
 
 ### Installation
 
 ```bash
 # Install to /usr/local/bin
-sudo cp target/release/gen-mcp /usr/local/bin/
+sudo cp target/release/command-mcp /usr/local/bin/
 
 # Or install to user directory
-cp target/release/gen-mcp ~/.local/bin/
+cp target/release/command-mcp ~/.local/bin/
 ```
 
 ### Running
 
-`gen-mcp` uses the same TOML configuration for both transports. The transport is selected at runtime with `--mode`:
+`command-mcp` uses the same TOML configuration for both transports. The transport is selected at runtime with `--mode`:
 
 - `--mode stdio` (default): STDIN/STDOUT transport (typical for VS Code integration)
 - `--mode websocket`: WebSocket transport (typical for hosted deployments)
 
 ```bash
 # STDIN/STDOUT mode
-gen-mcp serve --config /path/to/config.toml --mode stdio
+command-mcp serve --config /path/to/config.toml --mode stdio
 
 # WebSocket mode
-gen-mcp serve --config /path/to/config.toml --mode websocket --port 8080
+command-mcp serve --config /path/to/config.toml --mode websocket --port 8080
 ```
 
 ## Systemd Service
 
-Create `/etc/systemd/system/gen-mcp.service`:
+Create `/etc/systemd/system/command-mcp.service`:
 
 ```ini
 [Unit]
@@ -94,10 +94,10 @@ After=network.target
 
 [Service]
 Type=simple
-User=gen-mcp
-WorkingDirectory=/opt/gen-mcp
-ExecStart=/usr/local/bin/gen-mcp serve \
-  --config /opt/gen-mcp/config.toml \
+User=command-mcp
+WorkingDirectory=/opt/command-mcp
+ExecStart=/usr/local/bin/command-mcp serve \
+  --config /opt/command-mcp/config.toml \
   --mode websocket \
   --port 8080
 Restart=on-failure
@@ -110,8 +110,8 @@ WantedBy=multi-user.target
 Enable and start:
 
 ```bash
-sudo systemctl enable gen-mcp
-sudo systemctl start gen-mcp
+sudo systemctl enable command-mcp
+sudo systemctl start command-mcp
 ```
 
 ## VS Code Integration
@@ -121,8 +121,8 @@ Configure in VS Code settings:
 ```json
 {
   "mcp.servers": {
-    "gen-mcp": {
-      "command": "gen-mcp",
+    "command-mcp": {
+      "command": "command-mcp",
       "args": ["serve", "--config", "/path/to/config.toml", "--mode", "stdio"]
     }
   }
@@ -166,7 +166,7 @@ ws.onopen = () => {
 Ensure the binary and configuration file have appropriate permissions:
 
 ```bash
-chmod +x gen-mcp
+chmod +x command-mcp
 chmod 644 config.toml
 ```
 
@@ -175,7 +175,7 @@ chmod 644 config.toml
 Change the port:
 
 ```bash
-gen-mcp serve --config config.toml --mode websocket --port 8081
+command-mcp serve --config config.toml --mode websocket --port 8081
 ```
 
 ### Configuration Errors
@@ -183,7 +183,7 @@ gen-mcp serve --config config.toml --mode websocket --port 8081
 Validate configuration:
 
 ```bash
-gen-mcp config example > /tmp/config.toml
+command-mcp config example > /tmp/config.toml
 # Compare with your config
 ```
 

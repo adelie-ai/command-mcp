@@ -1,44 +1,44 @@
 {
 	"servers": {
-		"gen-mcp-unix-tools": {
+		"command-mcp-unix-tools": {
 			"type": "stdio",
-			"command": "gen-mcp",
+			"command": "command-mcp",
 			"args": [
 				"serve",
 				"-c",
 				"${workspaceFolder}/examples/unixtools_config.toml"
 			]
 		},
-		"gen-mcp-docker": {
+		"command-mcp-docker": {
 			"type": "stdio",
-			"command": "gen-mcp",
+			"command": "command-mcp",
 			"args": [
 				"serve",
 				"-c",
 				"${workspaceFolder}/examples/docker_config.toml"
 			]
 		},
-		"gen-mcp-podman": {
+		"command-mcp-podman": {
 			"type": "stdio",
-			"command": "gen-mcp",
+			"command": "command-mcp",
 			"args": [
 				"serve",
 				"-c",
 				"${workspaceFolder}/examples/podman_config.toml"
 			]
 		},
-		"gen-mcp-just": {
+		"command-mcp-just": {
 			"type": "stdio",
-			"command": "gen-mcp",
+			"command": "command-mcp",
 			"args": [
 				"serve",
 				"-c",
 				"${workspaceFolder}/examples/just_config.toml"
 			]
 		},
-		"gen-mcp-kubectl": {
+		"command-mcp-kubectl": {
 			"type": "stdio",
-			"command": "gen-mcp",
+			"command": "command-mcp",
 			"args": [
 				"serve",
 				"-c",

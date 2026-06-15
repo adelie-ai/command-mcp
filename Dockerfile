@@ -1,4 +1,4 @@
-# Multi-stage build for gen-mcp
+# Multi-stage build for command-mcp
 
 # Build stage
 FROM rust:1.92 as builder
@@ -24,12 +24,12 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN useradd -m -u 1000 gen-mcp
+RUN useradd -m -u 1000 command-mcp
 
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /build/target/release/gen-mcp /app/gen-mcp
+COPY --from=builder /build/target/release/command-mcp /app/command-mcp
 
 # Mount point for external configuration (recommended)
 RUN mkdir -p /configs /example_configs
@@ -38,16 +38,16 @@ RUN mkdir -p /configs /example_configs
 COPY examples/ /example_configs/
 
 # Set ownership
-RUN chown -R gen-mcp:gen-mcp /app /configs /example_configs
+RUN chown -R command-mcp:command-mcp /app /configs /example_configs
 
-USER gen-mcp
+USER command-mcp
 
 # Expose WebSocket port
 EXPOSE 8080
 
 # Default to stdio mode
-ENTRYPOINT ["/app/gen-mcp"]
-# Default config can be overridden by setting GENMCP_CONFIG or passing --config.
-ENV GENMCP_CONFIG=/example_configs/echo_config.toml
+ENTRYPOINT ["/app/command-mcp"]
+# Default config can be overridden by setting COMMAND_MCP_CONFIG or passing --config.
+ENV COMMAND_MCP_CONFIG=/example_configs/echo_config.toml
 CMD ["serve", "--mode", "stdio"]
 

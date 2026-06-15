@@ -1,6 +1,6 @@
 {
     "chat.mcp.serverSampling": {
-        "gen-mcp/.vscode/mcp.json: gen-mcp-file-tools": {
+        "command-mcp/.vscode/mcp.json: command-mcp-file-tools": {
             "allowedModels": [
                 "copilot/auto",
                 "copilot/claude-haiku-4.5",

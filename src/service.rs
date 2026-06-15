@@ -1,8 +1,8 @@
 #![deny(warnings)]
 
-//! The [`mcp_core::McpService`] implementation for gen-mcp.
+//! The [`mcp_core::McpService`] implementation for command-mcp.
 //!
-//! gen-mcp's tool set is built *dynamically* from a TOML config: every
+//! command-mcp's tool set is built *dynamically* from a TOML config: every
 //! configured `{group}_{tool}` command becomes one MCP tool whose input schema
 //! is generated from the tool's declared parameters (plus the standard runtime
 //! override knobs). This module owns the loaded [`Config`] / [`ToolRegistry`]
@@ -103,13 +103,13 @@ pub(crate) fn parse_shell_args(input: &str) -> Result<Vec<String>, String> {
     Ok(args)
 }
 
-/// The gen-mcp MCP service: a tool registry built from the loaded TOML config.
+/// The command-mcp MCP service: a tool registry built from the loaded TOML config.
 /// The tool set is static for a given config (it does not change at runtime).
-pub struct GenMcpService {
+pub struct CommandMcpService {
     tool_registry: Arc<ToolRegistry>,
 }
 
-impl GenMcpService {
+impl CommandMcpService {
     /// Build the service from a parsed [`Config`].
     pub fn new(config: Config) -> crate::error::Result<Self> {
         let tool_registry = Arc::new(ToolRegistry::from_config(&config)?);
@@ -118,7 +118,7 @@ impl GenMcpService {
 }
 
 #[async_trait]
-impl McpService for GenMcpService {
+impl McpService for CommandMcpService {
     /// The dynamically generated tool list: one [`ToolDef`] per configured
     /// command, with its generated input schema (parameter typing + runtime
     /// override knobs).
@@ -268,7 +268,7 @@ impl McpService for GenMcpService {
             )
             .map_err(|e| match e {
                 // OverrideExceedsMax is a bad-input condition the model should see.
-                crate::error::GenMcpError::Mcp(McpError::OverrideExceedsMax { .. }) => {
+                crate::error::CommandMcpError::Mcp(McpError::OverrideExceedsMax { .. }) => {
                     CallError::invalid_params(e.to_string())
                 }
                 other => CallError::internal(other.to_string()),
@@ -340,11 +340,11 @@ mod tests {
     use super::*;
     use crate::config::Config;
 
-    fn service_from(toml: &str) -> GenMcpService {
-        GenMcpService::new(Config::from_str(toml).unwrap()).unwrap()
+    fn service_from(toml: &str) -> CommandMcpService {
+        CommandMcpService::new(Config::from_str(toml).unwrap()).unwrap()
     }
 
-    fn echo_service() -> GenMcpService {
+    fn echo_service() -> CommandMcpService {
         service_from(
             r#"
 [groups.test_group]

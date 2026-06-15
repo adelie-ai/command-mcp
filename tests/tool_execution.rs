@@ -1,11 +1,11 @@
-// Integration tests for end-to-end tool execution through the gen-mcp service.
+// Integration tests for end-to-end tool execution through the command-mcp service.
 
-use gen_mcp::config::Config;
-use gen_mcp::service::GenMcpService;
+use command_mcp::config::Config;
+use command_mcp::service::CommandMcpService;
 use mcp_core::{CallError, Content, McpService};
 
-fn service_for(toml: &str) -> GenMcpService {
-    GenMcpService::new(Config::from_str(toml).unwrap()).unwrap()
+fn service_for(toml: &str) -> CommandMcpService {
+    CommandMcpService::new(Config::from_str(toml).unwrap()).unwrap()
 }
 
 fn reply_text(content: &[Content]) -> String {

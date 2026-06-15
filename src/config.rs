@@ -707,7 +707,7 @@ impl Config {
 }
 
 impl std::str::FromStr for Config {
-    type Err = crate::error::GenMcpError;
+    type Err = crate::error::CommandMcpError;
 
     /// Parse configuration from TOML string
     fn from_str(content: &str) -> std::result::Result<Self, Self::Err> {
@@ -1105,7 +1105,7 @@ enabled = true
         let err = Config::from_str(toml).unwrap_err();
         assert!(matches!(
             err,
-            crate::error::GenMcpError::Config(ConfigError::InvalidValue { .. })
+            crate::error::CommandMcpError::Config(ConfigError::InvalidValue { .. })
         ));
     }
 

@@ -1,4 +1,4 @@
-# Security Audit — genmcp
+# Security Audit — command-mcp
 
 **Date:** 2026-03-31
 **Scope:** Generic MCP server framework/generator

@@ -4,7 +4,7 @@ mod common;
 
 use common::{
     minimal_echo_config_toml, pick_unused_local_port, random_secret_hex_32_bytes,
-    spawn_gen_mcp_websocket, wait_for_tcp_connect, write_temp_config,
+    spawn_command_mcp_websocket, wait_for_tcp_connect, write_temp_config,
 };
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
@@ -140,7 +140,7 @@ async fn run_mcp_over_ws(
 async fn websocket_works_without_auth_when_jwt_not_enabled() {
     let cfg = write_temp_config(&minimal_echo_config_toml());
     let port = pick_unused_local_port();
-    let _server = spawn_gen_mcp_websocket(&cfg.path, "127.0.0.1", port, None);
+    let _server = spawn_command_mcp_websocket(&cfg.path, "127.0.0.1", port, None);
 
     wait_for_tcp_connect("127.0.0.1", port, Duration::from_secs(3)).await;
     let mut ws = ws_connect(port, None).await;
@@ -152,7 +152,7 @@ async fn websocket_auth_enabled_rejects_missing_authorization_header() {
     let cfg = write_temp_config(&minimal_echo_config_toml());
     let port = pick_unused_local_port();
     let secret = random_secret_hex_32_bytes();
-    let _server = spawn_gen_mcp_websocket(&cfg.path, "127.0.0.1", port, Some(&secret));
+    let _server = spawn_command_mcp_websocket(&cfg.path, "127.0.0.1", port, Some(&secret));
 
     wait_for_tcp_connect("127.0.0.1", port, Duration::from_secs(3)).await;
 
@@ -174,7 +174,7 @@ async fn websocket_auth_enabled_accepts_valid_jwt_and_allows_end_to_end() {
     let cfg = write_temp_config(&minimal_echo_config_toml());
     let port = pick_unused_local_port();
     let secret = random_secret_hex_32_bytes();
-    let _server = spawn_gen_mcp_websocket(&cfg.path, "127.0.0.1", port, Some(&secret));
+    let _server = spawn_command_mcp_websocket(&cfg.path, "127.0.0.1", port, Some(&secret));
 
     wait_for_tcp_connect("127.0.0.1", port, Duration::from_secs(3)).await;
 
@@ -204,7 +204,7 @@ async fn websocket_auth_enabled_rejects_bad_token() {
     let cfg = write_temp_config(&minimal_echo_config_toml());
     let port = pick_unused_local_port();
     let secret = random_secret_hex_32_bytes();
-    let _server = spawn_gen_mcp_websocket(&cfg.path, "127.0.0.1", port, Some(&secret));
+    let _server = spawn_command_mcp_websocket(&cfg.path, "127.0.0.1", port, Some(&secret));
 
     wait_for_tcp_connect("127.0.0.1", port, Duration::from_secs(3)).await;
 

@@ -203,7 +203,7 @@
 ## File Structure
 
 ```
-genmcp/
+command-mcp/
 ├── Cargo.toml
 ├── Dockerfile
 ├── README.md
