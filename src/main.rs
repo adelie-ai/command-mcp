@@ -180,6 +180,50 @@ fn resolve_ws_auth(
 mod tests {
     use super::*;
 
+    /// The server advertises a non-empty server-level `instructions` blurb on
+    /// its [`ServerConfig`]. mcp-core emits this in the initialize response and
+    /// the daemon uses it as command-mcp's searchable description, so an empty
+    /// value would leave tool discovery with no server-level signal.
+    #[test]
+    fn server_config_advertises_nonempty_instructions() {
+        let cfg = build_server_config(WsAuth::None);
+        let instructions = cfg
+            .instructions
+            .as_deref()
+            .expect("ServerConfig must carry server-level instructions");
+        assert!(
+            !instructions.trim().is_empty(),
+            "server instructions must not be empty/whitespace"
+        );
+    }
+
+    /// Pin the load-bearing natural terms in the blurb so it stays honest about
+    /// the config-driven adapter and useful for discovery: it must name what the
+    /// server wraps (`command-line`), the per-deployment `{group}_{tool}`
+    /// discovery pattern, the `tools/list` consultation, and the `exit code`
+    /// result contract. If the wording is reworked, these anchors must survive.
+    #[test]
+    fn server_instructions_mention_discovery_key_terms() {
+        let instructions = SERVER_INSTRUCTIONS.to_lowercase();
+        for term in ["command-line", "{group}_{tool}", "tools/list", "exit code"] {
+            assert!(
+                instructions.contains(term),
+                "server instructions should mention {term:?}"
+            );
+        }
+    }
+
+    /// `build_server_config` preserves the existing wiring alongside the new
+    /// instructions: the server name, `tools_list_changed = false`, and the
+    /// websocket auth passed through unchanged.
+    #[test]
+    fn build_server_config_preserves_wiring() {
+        let cfg = build_server_config(WsAuth::Secret("s".into()));
+        assert_eq!(cfg.name, "command-mcp");
+        assert!(!cfg.tools_list_changed);
+        assert!(matches!(cfg.ws_auth, WsAuth::Secret(_)));
+    }
+
     #[test]
     fn ws_auth_none_when_config_absent() {
         assert!(matches!(
