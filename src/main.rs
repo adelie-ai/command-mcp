@@ -77,6 +77,36 @@ enum ConfigCommands {
     },
 }
 
+/// Server-level `instructions` returned in the MCP initialize response. This is
+/// a model-facing hint: mcp-core emits it verbatim and the daemon captures it as
+/// command-mcp's searchable description, so it must say what the server is for,
+/// when to reach for it, and how its config-driven tools are shaped and behave.
+/// command-mcp has no fixed tools (they come from the operator's TOML config and
+/// are named `{group}_{tool}`), so the blurb points at `tools/list` for discovery
+/// rather than naming tools that may not exist in a given deployment.
+const SERVER_INSTRUCTIONS: &str = "command-mcp exposes this deployment's \
+    operator-configured command-line programs -- scripts, binaries, and CLIs -- \
+    as MCP tools, letting you run pre-approved local commands on the user's \
+    behalf. Reach for it when a request maps to one of the commands wired up \
+    here, such as a wrapped build or deploy script, a data or media utility, or \
+    a maintenance CLI. The tool set is defined per deployment and each tool is \
+    named `{group}_{tool}`, so consult the current tools/list instead of \
+    assuming fixed names; every tool wraps one specific command and returns its \
+    exit code, STDOUT, and STDERR. Tool arguments are passed through as that \
+    command's CLI arguments, subject to per-tool timeouts and output-size limits.";
+
+/// Build the mcp-core [`ServerConfig`] for command-mcp: crate name/version, the
+/// server-level [`SERVER_INSTRUCTIONS`] blurb, a static tool list
+/// (`tools_list_changed = false` -- the tools are fixed for a given config), and
+/// the resolved websocket auth. Kept as a small helper so the wiring is unit
+/// testable without standing up a transport.
+fn build_server_config(ws_auth: WsAuth) -> ServerConfig {
+    ServerConfig::new("command-mcp", env!("CARGO_PKG_VERSION"))
+        .instructions(SERVER_INSTRUCTIONS)
+        .tools_list_changed(false)
+        .websocket_auth(ws_auth)
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -102,9 +132,7 @@ async fn main() -> Result<()> {
             // transport. The default transport set (stdio + websocket) already
             // permits websocket because we built with the `auth` feature (which
             // implies `websocket`); auth is only enforced when ws_auth != None.
-            let server_config = ServerConfig::new("command-mcp", env!("CARGO_PKG_VERSION"))
-                .tools_list_changed(false)
-                .websocket_auth(ws_auth);
+            let server_config = build_server_config(ws_auth);
             let core = ServerCore::new(server_config, Arc::new(service));
             mcp_core::serve(core, &common).await?;
         }
