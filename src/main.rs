@@ -97,13 +97,19 @@ const SERVER_INSTRUCTIONS: &str = "command-mcp exposes this deployment's \
 
 /// Build the mcp-core [`ServerConfig`] for command-mcp: crate name/version, the
 /// server-level [`SERVER_INSTRUCTIONS`] blurb, a static tool list
-/// (`tools_list_changed = false` -- the tools are fixed for a given config), and
-/// the resolved websocket auth. Kept as a small helper so the wiring is unit
-/// testable without standing up a transport.
+/// (`tools_list_changed = false` -- the tools are fixed for a given config), the
+/// opt-in websocket transport, and the resolved websocket auth. Kept as a small
+/// helper so the wiring is unit testable without standing up a transport.
+///
+/// `with_websocket()` is required because mcp-core defaults to stdio-only and
+/// fails closed on `--transport websocket` unless a server opts in (MC-7).
+/// command-mcp supports hosted websocket mode with optional Bearer-token auth,
+/// so it enables the transport here; `websocket_auth` then guards it.
 fn build_server_config(ws_auth: WsAuth) -> ServerConfig {
     ServerConfig::new("command-mcp", env!("CARGO_PKG_VERSION"))
         .instructions(SERVER_INSTRUCTIONS)
         .tools_list_changed(false)
+        .with_websocket()
         .websocket_auth(ws_auth)
 }
 
@@ -129,9 +135,9 @@ async fn main() -> Result<()> {
             let service = CommandMcpService::new(config)?;
 
             // Hand mcp-core the config + service and serve over the selected
-            // transport. The default transport set (stdio + websocket) already
-            // permits websocket because we built with the `auth` feature (which
-            // implies `websocket`); auth is only enforced when ws_auth != None.
+            // transport. `build_server_config` opts into the websocket transport
+            // (mcp-core defaults to stdio-only since MC-7); auth is only enforced
+            // when ws_auth != None.
             let server_config = build_server_config(ws_auth);
             let core = ServerCore::new(server_config, Arc::new(service));
             mcp_core::serve(core, &common).await?;
@@ -250,6 +256,20 @@ mod tests {
         assert_eq!(cfg.name, "command-mcp");
         assert!(!cfg.tools_list_changed);
         assert!(matches!(cfg.ws_auth, WsAuth::Secret(_)));
+    }
+
+    /// MC-7: mcp-core defaults to stdio-only and fails closed on
+    /// `--transport websocket` unless the server opts in. command-mcp offers a
+    /// hosted websocket mode, so `build_server_config` must enable the websocket
+    /// transport; without this the websocket listener never binds and hosted
+    /// mode silently degrades to "connection refused".
+    #[test]
+    fn build_server_config_enables_websocket_transport() {
+        let cfg = build_server_config(WsAuth::None);
+        assert!(
+            cfg.transports.websocket,
+            "command-mcp must opt into the websocket transport (MC-7)"
+        );
     }
 
     #[test]
