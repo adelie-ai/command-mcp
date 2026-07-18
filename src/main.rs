@@ -77,6 +77,36 @@ enum ConfigCommands {
     },
 }
 
+/// Server-level `instructions` returned in the MCP initialize response. This is
+/// a model-facing hint: mcp-core emits it verbatim and the daemon captures it as
+/// command-mcp's searchable description, so it must say what the server is for,
+/// when to reach for it, and how its config-driven tools are shaped and behave.
+/// command-mcp has no fixed tools (they come from the operator's TOML config and
+/// are named `{group}_{tool}`), so the blurb points at `tools/list` for discovery
+/// rather than naming tools that may not exist in a given deployment.
+const SERVER_INSTRUCTIONS: &str = "command-mcp exposes this deployment's \
+    operator-configured command-line programs -- scripts, binaries, and CLIs -- \
+    as MCP tools, letting you run pre-approved local commands on the user's \
+    behalf. Reach for it when a request maps to one of the commands wired up \
+    here, such as a wrapped build or deploy script, a data or media utility, or \
+    a maintenance CLI. The tool set is defined per deployment and each tool is \
+    named `{group}_{tool}`, so consult the current tools/list instead of \
+    assuming fixed names; every tool wraps one specific command and returns its \
+    exit code, STDOUT, and STDERR. Tool arguments are passed through as that \
+    command's CLI arguments, subject to per-tool timeouts and output-size limits.";
+
+/// Build the mcp-core [`ServerConfig`] for command-mcp: crate name/version, the
+/// server-level [`SERVER_INSTRUCTIONS`] blurb, a static tool list
+/// (`tools_list_changed = false` -- the tools are fixed for a given config), and
+/// the resolved websocket auth. Kept as a small helper so the wiring is unit
+/// testable without standing up a transport.
+fn build_server_config(ws_auth: WsAuth) -> ServerConfig {
+    ServerConfig::new("command-mcp", env!("CARGO_PKG_VERSION"))
+        .instructions(SERVER_INSTRUCTIONS)
+        .tools_list_changed(false)
+        .websocket_auth(ws_auth)
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -102,9 +132,7 @@ async fn main() -> Result<()> {
             // transport. The default transport set (stdio + websocket) already
             // permits websocket because we built with the `auth` feature (which
             // implies `websocket`); auth is only enforced when ws_auth != None.
-            let server_config = ServerConfig::new("command-mcp", env!("CARGO_PKG_VERSION"))
-                .tools_list_changed(false)
-                .websocket_auth(ws_auth);
+            let server_config = build_server_config(ws_auth);
             let core = ServerCore::new(server_config, Arc::new(service));
             mcp_core::serve(core, &common).await?;
         }
@@ -179,6 +207,50 @@ fn resolve_ws_auth(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The server advertises a non-empty server-level `instructions` blurb on
+    /// its [`ServerConfig`]. mcp-core emits this in the initialize response and
+    /// the daemon uses it as command-mcp's searchable description, so an empty
+    /// value would leave tool discovery with no server-level signal.
+    #[test]
+    fn server_config_advertises_nonempty_instructions() {
+        let cfg = build_server_config(WsAuth::None);
+        let instructions = cfg
+            .instructions
+            .as_deref()
+            .expect("ServerConfig must carry server-level instructions");
+        assert!(
+            !instructions.trim().is_empty(),
+            "server instructions must not be empty/whitespace"
+        );
+    }
+
+    /// Pin the load-bearing natural terms in the blurb so it stays honest about
+    /// the config-driven adapter and useful for discovery: it must name what the
+    /// server wraps (`command-line`), the per-deployment `{group}_{tool}`
+    /// discovery pattern, the `tools/list` consultation, and the `exit code`
+    /// result contract. If the wording is reworked, these anchors must survive.
+    #[test]
+    fn server_instructions_mention_discovery_key_terms() {
+        let instructions = SERVER_INSTRUCTIONS.to_lowercase();
+        for term in ["command-line", "{group}_{tool}", "tools/list", "exit code"] {
+            assert!(
+                instructions.contains(term),
+                "server instructions should mention {term:?}"
+            );
+        }
+    }
+
+    /// `build_server_config` preserves the existing wiring alongside the new
+    /// instructions: the server name, `tools_list_changed = false`, and the
+    /// websocket auth passed through unchanged.
+    #[test]
+    fn build_server_config_preserves_wiring() {
+        let cfg = build_server_config(WsAuth::Secret("s".into()));
+        assert_eq!(cfg.name, "command-mcp");
+        assert!(!cfg.tools_list_changed);
+        assert!(matches!(cfg.ws_auth, WsAuth::Secret(_)));
+    }
 
     #[test]
     fn ws_auth_none_when_config_absent() {
