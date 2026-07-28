@@ -96,7 +96,7 @@ async fn stdio_end_to_end_initialize_and_tool_call() {
         "id": 1,
         "method": "initialize",
         "params": {
-            "protocolVersion": "2024-11-05",
+            "protocolVersion": "2025-11-25",
             "capabilities": {},
         }
     });
@@ -107,7 +107,7 @@ async fn stdio_end_to_end_initialize_and_tool_call() {
             .get("result")
             .and_then(|r| r.get("protocolVersion"))
             .and_then(|v| v.as_str()),
-        Some("2024-11-05")
+        Some("2025-11-25")
     );
 
     // Notification (no response expected)
@@ -155,7 +155,7 @@ async fn stdio_end_to_end_content_length_framing_initialize_and_tool_call() {
         "id": 1,
         "method": "initialize",
         "params": {
-            "protocolVersion": "2024-11-05",
+            "protocolVersion": "2025-11-25",
             "capabilities": {},
         }
     });

@@ -89,7 +89,7 @@ async fn run_mcp_over_ws(
         "id": 1,
         "method": "initialize",
         "params": {
-            "protocolVersion": "2024-11-05",
+            "protocolVersion": "2025-11-25",
             "capabilities": {},
         }
     });
@@ -99,7 +99,7 @@ async fn run_mcp_over_ws(
             .get("result")
             .and_then(|r| r.get("protocolVersion"))
             .and_then(|v| v.as_str()),
-        Some("2024-11-05")
+        Some("2025-11-25")
     );
 
     // Notification (no response expected)
