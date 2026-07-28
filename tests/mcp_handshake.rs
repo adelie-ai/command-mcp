@@ -31,7 +31,7 @@ default_timeout = 30
 
     let mut session = session_for(toml);
 
-    // Initialize — mcp-core negotiates the requested version and does NOT leak a
+    // Initialize — mcp-core echoes a supported version and does NOT leak a
     // top-level `tools` key (that was a command-mcp quirk; the spec-correct shape
     // returns tools only via tools/list).
     let init = session
@@ -39,20 +39,36 @@ default_timeout = 30
             "jsonrpc": "2.0",
             "id": 1,
             "method": "initialize",
-            "params": { "protocolVersion": "2024-11-05", "capabilities": {} }
+            "params": { "protocolVersion": "2025-11-25", "capabilities": {} }
         }))
         .await;
     let result = &init.response.unwrap()["result"];
-    assert_eq!(result["protocolVersion"], "2024-11-05");
+    assert_eq!(result["protocolVersion"], "2025-11-25");
     assert_eq!(result["serverInfo"]["name"], "command-mcp");
     assert!(
         result.get("tools").is_none(),
         "initialize must not embed a top-level tools key"
     );
 
+    // A client on a revision mcp-core has retired still gets a usable session:
+    // it is answered with a supported version rather than an error.
+    let legacy = session
+        .handle_message(json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "initialize",
+            "params": { "protocolVersion": "2024-11-05", "capabilities": {} }
+        }))
+        .await;
+    assert_eq!(
+        legacy.response.unwrap()["result"]["protocolVersion"],
+        "2025-11-25",
+        "a retired revision must be answered with a supported one, not echoed"
+    );
+
     // tools/list returns the dynamically generated tool.
     let list = session
-        .handle_message(json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }))
+        .handle_message(json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/list" }))
         .await;
     let tools = list.response.unwrap()["result"]["tools"]
         .as_array()
