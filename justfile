@@ -43,10 +43,13 @@ check-otel: fmt-check
   cargo clippy --all-targets --features otel -- -D warnings
   cargo build --features otel
   cargo test --features otel
+# Every configuration this crate ships in. This is what the pre-push hook
+# runs, so a change that only compiles with `otel` off cannot reach a push.
+check-all: check check-otel
 premerge:
   git fetch origin
   git rebase origin/main
-  just check
+  just check-all
 install-hooks:
   git config core.hooksPath .githooks
   @echo "pre-push hook active — bypass once with: git push --no-verify"
