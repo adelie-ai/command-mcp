@@ -154,7 +154,17 @@ where
 }
 
 /// Execute a command with the given parameters
+///
+/// `skip_all`: `command` and `args` are the caller's command line -- content
+/// that must never reach a span field (mcp-core#40 / D10). `timeout_secs`
+/// and `stop_after_secs` are operational configuration, not content, so they
+/// stay as fields.
 #[allow(clippy::too_many_arguments)] // Required for comprehensive execution configuration
+#[tracing::instrument(
+    name = "command.execute",
+    skip_all,
+    fields(timeout_secs, stop_after_secs)
+)]
 pub async fn execute_command(
     command: &str,
     args: &[String],
@@ -172,6 +182,10 @@ pub async fn execute_command(
     cmd.stdin(Stdio::null());
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
+
+    // `timeout_secs` is config, not content -- the command line itself is
+    // not named here or anywhere below.
+    tracing::debug!(timeout_secs, "spawning subprocess");
 
     // Start the process
     let mut child = cmd

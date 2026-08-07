@@ -119,6 +119,17 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Serve { local, common } => {
+            // command-mcp's `serve` subcommand lives alongside a `config`
+            // subcommand, so it cannot use mcp-core's `run`/`run_simple`
+            // (they own the whole CLI and install telemetry as part of
+            // that). A server on the lower-level `serve` owns installing the
+            // subscriber itself -- see `mcp_core::run`'s own doc comment.
+            // Held for the rest of `main`: dropping it flushes whatever the
+            // OTLP exporters still had buffered.
+            let _telemetry =
+                mcp_core::telemetry::init(mcp_core::telemetry::Config::new("command-mcp"))
+                    .map_err(mcp_core::Error::from)?;
+
             // Load the command-mcp TOML tool config (this also validates the
             // `[websocket_auth]` section, e.g. mutually-exclusive methods).
             let config = Config::from_file(&local.config)?;
