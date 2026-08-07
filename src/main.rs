@@ -124,11 +124,17 @@ async fn main() -> Result<()> {
             // (they own the whole CLI and install telemetry as part of
             // that). A server on the lower-level `serve` owns installing the
             // subscriber itself -- see `mcp_core::run`'s own doc comment.
-            // Held for the rest of `main`: dropping it flushes whatever the
-            // OTLP exporters still had buffered.
-            let _telemetry =
+            // Held until the signal/served race below: dropping it flushes
+            // whatever the OTLP exporters still had buffered.
+            let telemetry =
                 mcp_core::telemetry::init(mcp_core::telemetry::Config::new("command-mcp"))
                     .map_err(mcp_core::Error::from)?;
+
+            // Install before any of the setup below, so a signal that
+            // arrives while the config loads or the service builds is
+            // remembered rather than fatal (mcp_core::run does the same,
+            // before its own `build`).
+            let mut stop = mcp_core::shutdown::StopSignals::install()?;
 
             // Load the command-mcp TOML tool config (this also validates the
             // `[websocket_auth]` section, e.g. mutually-exclusive methods).
@@ -151,7 +157,23 @@ async fn main() -> Result<()> {
             // when ws_auth != None.
             let server_config = build_server_config(ws_auth);
             let core = ServerCore::new(server_config, Arc::new(service));
-            mcp_core::serve(core, &common).await?;
+
+            // Race the serve loop against the two stop signals, `biased` so
+            // a serve loop that ends in the same poll as a signal still
+            // reports its own result rather than losing the race. On the
+            // client-ended-session path the guard drops as `return` unwinds
+            // this scope, the flush that has always worked.
+            //
+            // `flush_and_exit` never returns: it drops the guard by hand and
+            // ends the process itself, because a stdio server that returned
+            // normally instead would flush correctly and then hang forever
+            // on its own blocking stdin read (mcp-core#46).
+            let signal = tokio::select! {
+                biased;
+                result = mcp_core::serve(core, &common) => return result.map_err(Into::into),
+                signal = stop.recv() => signal,
+            };
+            mcp_core::shutdown::flush_and_exit(signal, telemetry);
         }
         Commands::Config { command } => match command {
             ConfigCommands::Schema => command_mcp::config_schema::output_generated_schema()?,

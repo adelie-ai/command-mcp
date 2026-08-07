@@ -23,12 +23,14 @@ mod common;
 use common::{
     command_mcp_bin, minimal_echo_config_toml, pick_unused_local_port, write_temp_config,
 };
+use futures_util::{SinkExt, StreamExt};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
 use std::process::{Child, ChildStderr, Command, ExitStatus, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
+use tokio_tungstenite::tungstenite::Message;
 
 /// How long a signalled server may take to stop before the test gives up.
 /// The flush itself is bounded by the telemetry guard's own shutdown budget,
@@ -186,6 +188,10 @@ fn sigterm_over_websocket_flushes_the_final_metrics_summary() {
     let port = pick_unused_local_port();
     let mut probe = Probe::start_websocket(&cfg.path, port);
     probe.wait_until_listening();
+    // The metrics summary is only written when it has something to report,
+    // so a transport that served no request would leave the flush with
+    // nothing to prove.
+    websocket_initialize_request(port);
 
     probe.signal("TERM");
     let stopped = probe.finish();
@@ -203,6 +209,42 @@ fn sigterm_over_websocket_flushes_the_final_metrics_summary() {
          but stderr was: {:?}",
         stopped.stderr
     );
+}
+
+/// Connect to the websocket probe's `/ws` endpoint, send one `initialize`
+/// request, and wait for its reply, so the metrics registry has something in
+/// it before the probe is signalled. Blocks on a throwaway current-thread
+/// runtime, mirroring how `Probe::request` proves readiness for stdio.
+fn websocket_initialize_request(port: u16) {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("a current-thread runtime");
+    runtime.block_on(async move {
+        let url = format!("ws://127.0.0.1:{port}/ws");
+        let (mut ws, _resp) = tokio_tungstenite::connect_async(url)
+            .await
+            .expect("the probe must accept a websocket connection");
+        let request = serde_json::json!({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}
+        });
+        ws.send(Message::Text(request.to_string().into()))
+            .await
+            .expect("the probe must accept the request");
+        let reply = ws
+            .next()
+            .await
+            .expect("the probe must reply before closing the connection")
+            .expect("a valid websocket message");
+        let text = match reply {
+            Message::Text(t) => t.to_string(),
+            other => panic!("expected a text reply, got {other:?}"),
+        };
+        assert!(
+            text.contains("\"result\""),
+            "the probe must be serving before it is signalled, but replied {text:?}"
+        );
+    });
 }
 
 /// Start a stdio probe, drive one request through it so the metrics registry
@@ -264,8 +306,7 @@ impl Probe {
             .stderr(Stdio::piped());
         let mut child = cmd.spawn().expect("the probe must start");
         let stdout = BufReader::new(child.stdout.take().expect("the probe has a piped stdout"));
-        let stderr =
-            StderrTail::attach(child.stderr.take().expect("the probe has a piped stderr"));
+        let stderr = StderrTail::attach(child.stderr.take().expect("the probe has a piped stderr"));
         Self {
             child,
             stdout,
