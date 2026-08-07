@@ -647,4 +647,108 @@ default_timeout_max = 300
     fn parse_shell_args_empty() {
         assert_eq!(parse_shell_args("").unwrap(), Vec::<String>::new());
     }
+
+    // --- execution_outcome / execution_error_outcome (mcp-core#40) ---------
+
+    fn ok_result(exit_code: i32, stopped_after: bool) -> crate::error::Result<ExecutionResult> {
+        Ok(ExecutionResult {
+            exit_code,
+            stdout: String::new(),
+            stderr: String::new(),
+            stopped_after,
+        })
+    }
+
+    #[test]
+    fn execution_outcome_ok_for_zero_exit_not_stopped() {
+        assert_eq!(execution_outcome(&ok_result(0, false)), "ok");
+    }
+
+    #[test]
+    fn execution_outcome_nonzero_exit_for_nonzero_exit_not_stopped() {
+        assert_eq!(execution_outcome(&ok_result(7, false)), "nonzero_exit");
+    }
+
+    #[test]
+    fn execution_outcome_stopped_after_regardless_of_exit_code() {
+        assert_eq!(execution_outcome(&ok_result(0, true)), "stopped_after");
+        assert_eq!(execution_outcome(&ok_result(137, true)), "stopped_after");
+    }
+
+    #[test]
+    fn execution_outcome_timeout_for_timeout_error() {
+        let result: crate::error::Result<ExecutionResult> =
+            Err(CommandMcpError::Execution(ExecutionError::Timeout {
+                command: "x".to_string(),
+                timeout: 5,
+            }));
+        assert_eq!(execution_outcome(&result), "timeout");
+    }
+
+    #[test]
+    fn execution_outcome_command_not_found_for_command_not_found_error() {
+        let result: crate::error::Result<ExecutionResult> = Err(CommandMcpError::Execution(
+            ExecutionError::CommandNotFound("x: not found".to_string()),
+        ));
+        assert_eq!(execution_outcome(&result), "command_not_found");
+    }
+
+    #[test]
+    fn execution_outcome_stopped_after_for_stopped_after_error() {
+        // Not constructed by `execute_command` today (`stop_after` reaches a
+        // successful `Ok` result instead, see the `ok_result` tests above),
+        // but the classifier is exhaustive over `ExecutionError`, so this
+        // variant is still covered.
+        let result: crate::error::Result<ExecutionResult> =
+            Err(CommandMcpError::Execution(ExecutionError::StoppedAfter {
+                command: "x".to_string(),
+                duration: 5,
+            }));
+        assert_eq!(execution_outcome(&result), "stopped_after");
+    }
+
+    #[test]
+    fn execution_outcome_error_for_command_failed_error() {
+        let result: crate::error::Result<ExecutionResult> =
+            Err(CommandMcpError::Execution(ExecutionError::CommandFailed {
+                command: "x".to_string(),
+                exit_code: None,
+                stderr: "boom".to_string(),
+            }));
+        assert_eq!(execution_outcome(&result), "error");
+    }
+
+    #[test]
+    fn execution_outcome_error_for_signal_failed_error() {
+        let result: crate::error::Result<ExecutionResult> = Err(CommandMcpError::Execution(
+            ExecutionError::SignalFailed("boom".to_string()),
+        ));
+        assert_eq!(execution_outcome(&result), "error");
+    }
+
+    #[test]
+    fn execution_outcome_error_for_permission_denied_error() {
+        let result: crate::error::Result<ExecutionResult> = Err(CommandMcpError::Execution(
+            ExecutionError::PermissionDenied("x".to_string()),
+        ));
+        assert_eq!(execution_outcome(&result), "error");
+    }
+
+    #[test]
+    fn execution_outcome_error_for_invalid_arguments_error() {
+        let result: crate::error::Result<ExecutionResult> = Err(CommandMcpError::Execution(
+            ExecutionError::InvalidArguments("x".to_string()),
+        ));
+        assert_eq!(execution_outcome(&result), "error");
+    }
+
+    #[test]
+    fn execution_outcome_error_for_non_execution_command_mcp_error() {
+        // `execute_command` only ever returns `CommandMcpError::Execution`;
+        // this proves the type-level fallback for every other variant still
+        // classifies as "error" rather than panicking.
+        let result: crate::error::Result<ExecutionResult> =
+            Err(CommandMcpError::Io(std::io::Error::other("boom")));
+        assert_eq!(execution_outcome(&result), "error");
+    }
 }
