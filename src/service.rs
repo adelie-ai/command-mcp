@@ -11,13 +11,15 @@
 //! `split_args` shell-splitting, runtime-override validation, and the
 //! "Exit code / STDOUT / STDERR" result formatting the old server produced.
 
-use crate::config::{Config, OutputFormat};
-use crate::error::McpError;
-use crate::executor::execute_command;
+use crate::config::{Config, OutputFormat, ResolvedTool};
+use crate::error::{CommandMcpError, ExecutionError, McpError};
+use crate::executor::{ExecutionResult, execute_command};
 use crate::tools::ToolRegistry;
+use mcp_core::telemetry::metrics::{self, Label};
 use mcp_core::{CallError, McpService, ToolDef, ToolReply, async_trait};
 use serde_json::Value;
 use std::sync::Arc;
+use std::time::Instant;
 
 /// Parse shell-like arguments respecting quotes and escapes.
 /// Handles single quotes, double quotes, escaped characters, and multi-line
@@ -115,31 +117,26 @@ impl CommandMcpService {
         let tool_registry = Arc::new(ToolRegistry::from_config(&config)?);
         Ok(Self { tool_registry })
     }
-}
 
-#[async_trait]
-impl McpService for CommandMcpService {
-    /// The dynamically generated tool list: one [`ToolDef`] per configured
-    /// command, with its generated input schema (parameter typing + runtime
-    /// override knobs).
-    fn tools(&self) -> Vec<ToolDef> {
-        self.tool_registry
-            .all_tools()
-            .map(|tool| {
-                let schema = self.tool_registry.generate_tool_schema(tool);
-                ToolDef::new(schema.name, schema.description, schema.input_schema)
-            })
-            .collect()
-    }
-
-    /// Look up the configured command by name and run it via the executor.
-    async fn call_tool(&self, name: &str, arguments: &Value) -> Result<ToolReply, CallError> {
-        // Unknown tool → tool-level error (isError content the model can react to).
-        let tool = self
-            .tool_registry
-            .get_tool(name)
-            .ok_or_else(|| CallError::tool(format!("Tool not found: {name}")))?;
-
+    /// Build the CLI invocation for `tool` from `arguments`, run it, and
+    /// format the result.
+    ///
+    /// `skip_all`: `arguments`, and everything built from it -- the CLI
+    /// argument vector, the command's STDOUT/STDERR -- is the caller's
+    /// content and must never reach a span field (mcp-core#40 / D10). The
+    /// tool name is already on mcp-core's own `mcp.tools.call` span.
+    ///
+    /// This is a plain method rather than `McpService::call_tool` itself so
+    /// that `#[tracing::instrument]` actually spans the work:
+    /// `#[async_trait]` desugars a trait `async fn` into one returning
+    /// `Pin<Box<dyn Future>>`, and instrumenting *that* would only span the
+    /// near-instant construction of the future, not its execution.
+    #[tracing::instrument(name = "command_mcp.call_tool", skip_all)]
+    async fn execute_tool_call(
+        &self,
+        tool: &ResolvedTool,
+        arguments: &Value,
+    ) -> Result<ToolReply, CallError> {
         // Arguments may be omitted entirely (Null); treat that as an empty object.
         let empty = serde_json::Map::new();
         let args_map = match arguments {
@@ -285,8 +282,14 @@ impl McpService for CommandMcpService {
         let output_tail = output_tail_lines.unwrap_or(tool.output_tail_lines);
         let stderr = stderr_lines.unwrap_or(tool.stderr_lines);
 
-        // Execute the command.
-        let exec_result = execute_command(
+        // Execute the command, and record its outcome against
+        // `command.execute` / `command.execute.duration` regardless of
+        // whether it succeeded -- a nonzero exit or a `stop_after` budget
+        // are both a *successful* JSON-RPC call (see `is_error`, below),
+        // domain information mcp-core's own protocol-level outcome metric
+        // cannot see.
+        let started = Instant::now();
+        let exec_outcome = execute_command(
             &tool.command,
             &tool_args,
             timeout_secs,
@@ -297,8 +300,13 @@ impl McpService for CommandMcpService {
             output_tail,
             stderr,
         )
-        .await
-        .map_err(|e| CallError::tool(e.to_string()))?;
+        .await;
+        record_tool_execution(
+            &tool.full_name,
+            execution_outcome(&exec_outcome),
+            started.elapsed(),
+        );
+        let exec_result = exec_outcome.map_err(|e| CallError::tool(e.to_string()))?;
 
         // A non-zero exit code is a tool-level error, unless the process was
         // stopped by the `stop_after` budget (which is a successful outcome).
@@ -333,6 +341,92 @@ impl McpService for CommandMcpService {
         reply.is_error = is_error;
         Ok(reply)
     }
+}
+
+#[async_trait]
+impl McpService for CommandMcpService {
+    /// The dynamically generated tool list: one [`ToolDef`] per configured
+    /// command, with its generated input schema (parameter typing + runtime
+    /// override knobs).
+    fn tools(&self) -> Vec<ToolDef> {
+        self.tool_registry
+            .all_tools()
+            .map(|tool| {
+                let schema = self.tool_registry.generate_tool_schema(tool);
+                ToolDef::new(schema.name, schema.description, schema.input_schema)
+            })
+            .collect()
+    }
+
+    /// Look up the configured command by name and hand off to
+    /// [`Self::execute_tool_call`], which does the real work under its own
+    /// span (see that method's doc comment for why the split exists).
+    async fn call_tool(&self, name: &str, arguments: &Value) -> Result<ToolReply, CallError> {
+        // Unknown tool → tool-level error (isError content the model can react to).
+        let tool = self
+            .tool_registry
+            .get_tool(name)
+            .ok_or_else(|| CallError::tool(format!("Tool not found: {name}")))?;
+        self.execute_tool_call(tool, arguments).await
+    }
+}
+
+/// Classify a completed [`execute_command`] call into the bounded metric
+/// label [`record_tool_execution`] counts by. A nonzero exit is a normal,
+/// successful shell interaction from mcp-core's point of view (the JSON-RPC
+/// call still succeeds -- see the `is_error` handling in
+/// [`CommandMcpService::execute_tool_call`]), so this tells it apart from a
+/// genuine execution fault: domain information mcp-core's own
+/// protocol-level outcome metric cannot see.
+fn execution_outcome(result: &crate::error::Result<ExecutionResult>) -> &'static str {
+    match result {
+        Ok(r) if r.stopped_after => "stopped_after",
+        Ok(r) if r.exit_code == 0 => "ok",
+        Ok(_) => "nonzero_exit",
+        Err(CommandMcpError::Execution(e)) => execution_error_outcome(e),
+        // `execute_command` only ever returns `CommandMcpError::Execution`
+        // (see its own `?`/`.into()` sites); every other `CommandMcpError`
+        // variant is unreachable from this call site. Kept as an explicit
+        // fallback rather than a wildcard on `ExecutionError` itself below,
+        // so a *new execution* outcome still forces a decision there.
+        Err(_) => "error",
+    }
+}
+
+/// Classify one [`ExecutionError`]. Exhaustive, with no wildcard arm: a new
+/// variant must be classified here before this compiles, rather than
+/// silently landing under a catch-all "error".
+fn execution_error_outcome(error: &ExecutionError) -> &'static str {
+    match error {
+        ExecutionError::CommandNotFound(_) => "command_not_found",
+        ExecutionError::Timeout { .. } => "timeout",
+        ExecutionError::StoppedAfter { .. } => "stopped_after",
+        ExecutionError::CommandFailed { .. }
+        | ExecutionError::SignalFailed(_)
+        | ExecutionError::PermissionDenied(_)
+        | ExecutionError::InvalidArguments(_) => "error",
+    }
+}
+
+/// Record one execution attempt against `command.execute` (a counter
+/// labelled `tool` and `outcome`) and `command.execute.duration` (a
+/// histogram labelled `tool`).
+///
+/// `tool` is the resolved `{group}_{tool}` name from this deployment's
+/// config -- bounded by the operator's own tool list, never by anything a
+/// caller supplies (mcp-core#40 lesson 3). `outcome` always comes from
+/// [`execution_outcome`]'s fixed `&'static str` set; its type makes a
+/// command line or output text impossible to pass here.
+fn record_tool_execution(tool: &str, outcome: &'static str, elapsed: std::time::Duration) {
+    metrics::increment(
+        "command.execute",
+        &[Label::new("tool", tool), Label::new("outcome", outcome)],
+    );
+    metrics::record_duration(
+        "command.execute.duration",
+        elapsed,
+        &[Label::new("tool", tool)],
+    );
 }
 
 #[cfg(test)]
@@ -646,5 +740,109 @@ default_timeout_max = 300
     #[test]
     fn parse_shell_args_empty() {
         assert_eq!(parse_shell_args("").unwrap(), Vec::<String>::new());
+    }
+
+    // --- execution_outcome / execution_error_outcome (mcp-core#40) ---------
+
+    fn ok_result(exit_code: i32, stopped_after: bool) -> crate::error::Result<ExecutionResult> {
+        Ok(ExecutionResult {
+            exit_code,
+            stdout: String::new(),
+            stderr: String::new(),
+            stopped_after,
+        })
+    }
+
+    #[test]
+    fn execution_outcome_ok_for_zero_exit_not_stopped() {
+        assert_eq!(execution_outcome(&ok_result(0, false)), "ok");
+    }
+
+    #[test]
+    fn execution_outcome_nonzero_exit_for_nonzero_exit_not_stopped() {
+        assert_eq!(execution_outcome(&ok_result(7, false)), "nonzero_exit");
+    }
+
+    #[test]
+    fn execution_outcome_stopped_after_regardless_of_exit_code() {
+        assert_eq!(execution_outcome(&ok_result(0, true)), "stopped_after");
+        assert_eq!(execution_outcome(&ok_result(137, true)), "stopped_after");
+    }
+
+    #[test]
+    fn execution_outcome_timeout_for_timeout_error() {
+        let result: crate::error::Result<ExecutionResult> =
+            Err(CommandMcpError::Execution(ExecutionError::Timeout {
+                command: "x".to_string(),
+                timeout: 5,
+            }));
+        assert_eq!(execution_outcome(&result), "timeout");
+    }
+
+    #[test]
+    fn execution_outcome_command_not_found_for_command_not_found_error() {
+        let result: crate::error::Result<ExecutionResult> = Err(CommandMcpError::Execution(
+            ExecutionError::CommandNotFound("x: not found".to_string()),
+        ));
+        assert_eq!(execution_outcome(&result), "command_not_found");
+    }
+
+    #[test]
+    fn execution_outcome_stopped_after_for_stopped_after_error() {
+        // Not constructed by `execute_command` today (`stop_after` reaches a
+        // successful `Ok` result instead, see the `ok_result` tests above),
+        // but the classifier is exhaustive over `ExecutionError`, so this
+        // variant is still covered.
+        let result: crate::error::Result<ExecutionResult> =
+            Err(CommandMcpError::Execution(ExecutionError::StoppedAfter {
+                command: "x".to_string(),
+                duration: 5,
+            }));
+        assert_eq!(execution_outcome(&result), "stopped_after");
+    }
+
+    #[test]
+    fn execution_outcome_error_for_command_failed_error() {
+        let result: crate::error::Result<ExecutionResult> =
+            Err(CommandMcpError::Execution(ExecutionError::CommandFailed {
+                command: "x".to_string(),
+                exit_code: None,
+                stderr: "boom".to_string(),
+            }));
+        assert_eq!(execution_outcome(&result), "error");
+    }
+
+    #[test]
+    fn execution_outcome_error_for_signal_failed_error() {
+        let result: crate::error::Result<ExecutionResult> = Err(CommandMcpError::Execution(
+            ExecutionError::SignalFailed("boom".to_string()),
+        ));
+        assert_eq!(execution_outcome(&result), "error");
+    }
+
+    #[test]
+    fn execution_outcome_error_for_permission_denied_error() {
+        let result: crate::error::Result<ExecutionResult> = Err(CommandMcpError::Execution(
+            ExecutionError::PermissionDenied("x".to_string()),
+        ));
+        assert_eq!(execution_outcome(&result), "error");
+    }
+
+    #[test]
+    fn execution_outcome_error_for_invalid_arguments_error() {
+        let result: crate::error::Result<ExecutionResult> = Err(CommandMcpError::Execution(
+            ExecutionError::InvalidArguments("x".to_string()),
+        ));
+        assert_eq!(execution_outcome(&result), "error");
+    }
+
+    #[test]
+    fn execution_outcome_error_for_non_execution_command_mcp_error() {
+        // `execute_command` only ever returns `CommandMcpError::Execution`;
+        // this proves the type-level fallback for every other variant still
+        // classifies as "error" rather than panicking.
+        let result: crate::error::Result<ExecutionResult> =
+            Err(CommandMcpError::Io(std::io::Error::other("boom")));
+        assert_eq!(execution_outcome(&result), "error");
     }
 }
