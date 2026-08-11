@@ -25,7 +25,18 @@ tracing = "0.1.44"
 [dev-dependencies]
 # Used by the websocket-auth integration test to mint HS256 tokens, by the
 # stdio/websocket end-to-end tests for temp configs, and by the websocket client.
-jsonwebtoken = { version = "10.2.0", default-features = false, features = ["rust_crypto", "use_pem"] }
+#
+# The backend is `aws_lc_rs`, never `rust_crypto` (mcp-core ADR 0002).
+# `rust_crypto` pulls `rsa`, which carries RUSTSEC-2023-0071 with no fixed
+# release. `aws-lc-rs` is already in the tree through mcp-core's `jwtk`, so this
+# costs no extra crate.
+#
+# Exactly one backend may be enabled. `jsonwebtoken` picks the process-wide
+# provider from its crate features, and with both on it installs one that panics
+# on the first sign or verify. Cargo unions features, so naming `rust_crypto`
+# here would break mcp-core's token checks at run time in a build that compiles
+# clean.
+jsonwebtoken = { version = "10.2.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
 tempfile = "3.24"
 tokio-tungstenite = "0.26"
 futures-util = "0.3.31"
