@@ -45,7 +45,7 @@ The Docker image runs as a non-root user (`command-mcp`, UID 1000) for security.
 
 ### Prerequisites
 
-- Rust 1.92 or later
+- Rust 1.99.0 or later
 - Cargo
 
 ### Building from Source

@@ -6,7 +6,7 @@ Development setup and contribution guidelines for command-mcp.
 
 ### Prerequisites
 
-- Rust 1.92 or later
+- Rust 1.99.0 or later
 - Cargo
 - Git
 
