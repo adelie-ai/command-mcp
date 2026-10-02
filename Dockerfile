@@ -1,7 +1,7 @@
 # Multi-stage build for command-mcp
 
 # Build stage
-FROM rust:1.92 as builder
+FROM rust:1.99 as builder
 
 WORKDIR /build
 
